@@ -69,8 +69,10 @@ func main() {
 	// CORS middleware
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowOrigins = cfg.CORSAllowedOrigins
-	corsConfig.AllowCredentials = true
-	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
+	corsConfig.ExposeHeaders = []string{"Content-Length", "Content-Type"}
+	corsConfig.AllowCredentials = false // Set to false when using Authorization header
 	r.Use(cors.New(corsConfig))
 
 	// Global middlewares

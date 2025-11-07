@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Upload, Video, Image as ImageIcon, Trash2, Eye, Play } from 'lucide-react';
+import { Upload, Video, Image as ImageIcon, Trash2, Eye, Play, AlertCircle } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
-import { useMediaItems, useUploadMedia, useDeleteMedia } from '../../../hooks/useApi';
+import { useAdminMediaList, useUploadMedia, useDeleteMedia } from '../../../hooks/admin/useAdminMedia';
+import { AxiosError } from 'axios';
 
 type MediaTab = 'images' | 'videos';
 
@@ -23,11 +24,11 @@ export default function MediaList() {
   const [activeTab, setActiveTab] = useState<MediaTab>('images');
   const [page, setPage] = useState(1);
 
-  // Fetch media items from API
-  const { data, isLoading, error } = useMediaItems({ 
+  // Fetch media items from ADMIN API
+  const { data, isLoading, isError, error, refetch } = useAdminMediaList({ 
     page, 
     page_size: 24,
-    type: activeTab === 'images' ? 'image' : 'video'
+    media_type: activeTab === 'images' ? 'image' : 'video'
   });
   const uploadMutation = useUploadMedia();
   const deleteMutation = useDeleteMedia();
@@ -39,7 +40,12 @@ export default function MediaList() {
   console.log('Admin Media Debug:', {
     activeTab,
     isLoading,
-    error,
+    isError,
+    error: error ? {
+      message: (error as AxiosError).message,
+      status: (error as AxiosError).response?.status,
+      data: (error as AxiosError).response?.data
+    } : null,
     dataReceived: !!data,
     mediaItemsCount: mediaItems.length,
     pagination,
@@ -67,15 +73,18 @@ export default function MediaList() {
     }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
-      
-      await uploadMutation.mutateAsync(formData);
+      await uploadMutation.mutateAsync({
+        file,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        category_id: isImage ? 18 : 19, // 18: Thư viện ảnh, 19: Thư viện video
+        media_type: isImage ? 'image' : 'video'
+      });
       alert('Upload thành công!');
       e.target.value = '';
     } catch (err: any) {
-      alert(err.message || 'Upload thất bại');
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Upload thất bại';
+      alert(`Lỗi: ${errorMessage}`);
+      console.error('Upload error:', err);
     }
   };
 
@@ -159,9 +168,37 @@ export default function MediaList() {
             <div className="p-8 text-center">
               <LoadingSpinner />
             </div>
-          ) : error ? (
-            <div className="p-8 text-center text-red-600">
-              Không thể tải dữ liệu. Vui lòng thử lại.
+          ) : isError ? (
+            <div className="p-8">
+              <div className="max-w-md mx-auto text-center">
+                <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Không thể tải dữ liệu
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {(error as AxiosError)?.response?.status === 401 
+                    ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+                    : (error as AxiosError)?.response?.status === 403
+                    ? 'Bạn không có quyền truy cập trang này.'
+                    : 'Đã xảy ra lỗi khi tải dữ liệu. Vui lòng thử lại.'}
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => refetch()}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Thử lại
+                  </button>
+                  {((error as AxiosError)?.response?.status === 401 || (error as AxiosError)?.response?.status === 403) && (
+                    <button
+                      onClick={() => window.location.href = '/login'}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    >
+                      Đăng nhập lại
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ) : activeTab === 'videos' ? (
             // Videos Tab

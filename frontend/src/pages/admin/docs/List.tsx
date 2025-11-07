@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Edit, Trash2, Download, FileText, Search, Eye } from 'lucide-react';
+import { Upload, Edit, Trash2, Download, FileText, Search, Eye, AlertCircle } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
-import { useAdminDocuments, useUploadDocument, useDeleteDocument } from '../../../hooks/useApi';
+import { useAdminDocsList, useUploadDocument, useDeleteDocument } from '../../../hooks/admin/useAdminDocuments';
+import { AxiosError } from 'axios';
 
 interface Document {
   id: number;
@@ -27,8 +28,8 @@ export default function DocumentsList() {
   const [search, setSearch] = useState('');
   const [fileType, setFileType] = useState('all');
 
-  // Fetch documents from API
-  const { data, isLoading, error } = useAdminDocuments({ page, page_size: 20 });
+  // Fetch documents from ADMIN API
+  const { data, isLoading, isError, error, refetch } = useAdminDocsList({ page, page_size: 20 });
   const uploadMutation = useUploadDocument();
   const deleteMutation = useDeleteDocument();
 
@@ -38,7 +39,12 @@ export default function DocumentsList() {
   // Debug logging
   console.log('Admin Documents Debug:', {
     isLoading,
-    error,
+    isError,
+    error: error ? {
+      message: (error as AxiosError).message,
+      status: (error as AxiosError).response?.status,
+      data: (error as AxiosError).response?.data
+    } : null,
     dataReceived: !!data,
     documentsCount: documents.length,
     pagination,
@@ -68,16 +74,17 @@ export default function DocumentsList() {
     }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
-      formData.append('category_id', '11'); // Default to "Kho văn bản" category
-      
-      await uploadMutation.mutateAsync(formData);
+      await uploadMutation.mutateAsync({
+        file,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        category_id: 11 // "Kho văn bản" category
+      });
       alert('Upload thành công!');
       e.target.value = ''; // Reset file input
     } catch (err: any) {
-      alert(err.message || 'Upload thất bại');
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Upload thất bại';
+      alert(`Lỗi: ${errorMessage}`);
+      console.error('Upload error:', err);
     }
   };
 
@@ -171,9 +178,37 @@ export default function DocumentsList() {
             <div className="p-8 text-center">
               <LoadingSpinner />
             </div>
-          ) : error ? (
-            <div className="p-8 text-center text-red-600">
-              Không thể tải dữ liệu. Vui lòng thử lại.
+          ) : isError ? (
+            <div className="p-8">
+              <div className="max-w-md mx-auto text-center">
+                <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Không thể tải dữ liệu
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {(error as AxiosError)?.response?.status === 401 
+                    ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+                    : (error as AxiosError)?.response?.status === 403
+                    ? 'Bạn không có quyền truy cập trang này.'
+                    : 'Đã xảy ra lỗi khi tải dữ liệu. Vui lòng thử lại.'}
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => refetch()}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Thử lại
+                  </button>
+                  {((error as AxiosError)?.response?.status === 401 || (error as AxiosError)?.response?.status === 403) && (
+                    <button
+                      onClick={() => window.location.href = '/login'}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    >
+                      Đăng nhập lại
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ) : documents.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
