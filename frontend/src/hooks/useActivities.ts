@@ -1,17 +1,14 @@
 import { useQueries } from '@tanstack/react-query';
 import { apiClient } from '../lib/apiClient';
+import { ACTIVITIES_SLUGS, CATEGORY_NAMES } from '../config/categorySlugs';
 
-// Activities sections matching Navigation
-export const ACTIVITIES_SLUGS = [
-  'hoat-dong-cua-thu-truong',
-  'hoat-dong-cua-su-doan',
-  'hoat-dong-cua-cac-don-vi'
-] as const;
+// Re-export for convenience
+export { ACTIVITIES_SLUGS };
 
-export const ACTIVITIES_NAMES: Record<string, string> = {
-  'hoat-dong-cua-su-doan': 'Hoạt động của Sư đoàn',
-  'hoat-dong-cua-cac-don-vi': 'Hoạt động của các đơn vị',
-  'hoat-dong-cua-thu-truong': 'Hoạt động của Thủ trưởng'
+export const ACTIVITIES_NAMES = {
+  [ACTIVITIES_SLUGS[0]]: CATEGORY_NAMES[ACTIVITIES_SLUGS[0]],
+  [ACTIVITIES_SLUGS[1]]: CATEGORY_NAMES[ACTIVITIES_SLUGS[1]],
+  [ACTIVITIES_SLUGS[2]]: CATEGORY_NAMES[ACTIVITIES_SLUGS[2]],
 };
 
 export interface Article {
@@ -132,27 +129,26 @@ export const useActivities = () => {
         }
 
         try {
-          // Fallback: Get category by slug, then fetch articles
-          const categoriesResponse = await apiClient.get('/categories');
-          const category = categoriesResponse.data?.data?.find(
-            (cat: Category) => cat.slug === slug
-          );
-
-          if (!category) {
-            throw new Error(`Category not found: ${slug}`);
-          }
-
+          // Fallback: Fetch articles directly by category_slug
           const articlesResponse = await apiClient.get('/articles', {
             params: {
-              category_id: category.id,
+              category_slug: slug,
               page_size: 6,
               sort: '-published_at'
             }
           });
 
+          // Get category info from first article or construct it
+          const articles = articlesResponse.data?.data || [];
+          const category = articles[0]?.category || {
+            id: ACTIVITIES_SLUGS.indexOf(slug) + 100,
+            name: ACTIVITIES_NAMES[slug],
+            slug
+          };
+
           return {
             category,
-            articles: articlesResponse.data?.data || []
+            articles
           };
         } catch (error) {
           console.warn(`Failed to fetch ${slug} from API, using dummy data`, error);

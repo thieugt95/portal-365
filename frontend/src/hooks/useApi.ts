@@ -311,14 +311,59 @@ export const mediaKeys = {
   lists: () => [...mediaKeys.all, 'list'] as const,
   list: (params?: any) => [...mediaKeys.lists(), params] as const,
   detail: (slug: string) => [...mediaKeys.all, 'detail', slug] as const,
+  admin: {
+    all: ['media', 'admin'] as const,
+    lists: () => ['media', 'admin', 'list'] as const,
+    list: (params?: any) => ['media', 'admin', 'list', params] as const,
+  },
 };
 
-export const useMediaItems = (params?: { page?: number; page_size?: number; type?: string }) => {
+// Public media items (no auth)
+export const usePublicMediaItems = (params?: { page?: number; page_size?: number; media_type?: string; category_id?: number }) => {
   return useQuery({
     queryKey: mediaKeys.list(params),
     queryFn: async () => {
-      const response = await api.mediaList(params || {});
-      return (response.data as any)?.data ? response.data : { data: response.data };
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+      if (params?.media_type) queryParams.append('media_type', params.media_type);
+      if (params?.category_id) queryParams.append('category_id', params.category_id.toString());
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/media-items?${queryParams}`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch media items');
+      }
+      return response.json();
+    },
+    staleTime: 60000,
+  });
+};
+
+// Admin media items (with auth)
+export const useMediaItems = (params?: { page?: number; page_size?: number; type?: string }) => {
+  return useQuery({
+    queryKey: mediaKeys.admin.list(params),
+    queryFn: async () => {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+      if (params?.type) queryParams.append('media_type', params.type); // Changed from 'type' to 'media_type'
+      
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/admin/media?${queryParams}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch media items');
+      }
+      return response.json();
     },
     staleTime: 60000,
   });
@@ -328,8 +373,13 @@ export const useMediaBySlug = (slug: string) => {
   return useQuery({
     queryKey: mediaKeys.detail(slug),
     queryFn: async () => {
-      const response = await api.mediaDetail({ slug });
-      return (response.data as any)?.data || response.data;
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/media/${slug}`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch media');
+      }
+      return response.json();
     },
     enabled: !!slug,
     staleTime: 60000,
@@ -340,11 +390,25 @@ export const useUploadMedia = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (formData: FormData) => {
-      const response = await api.adminMediaUploadCreate(formData);
-      return response.data;
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/admin/media/upload`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Upload failed');
+      }
+      return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: mediaKeys.all });
+      queryClient.invalidateQueries({ queryKey: mediaKeys.admin.lists() });
     },
   });
 };
@@ -353,11 +417,24 @@ export const useDeleteMedia = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const response = await api.adminMediaDelete({ id });
-      return response.data;
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/admin/media/${id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Delete failed');
+      }
+      return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: mediaKeys.all });
+      queryClient.invalidateQueries({ queryKey: mediaKeys.admin.lists() });
     },
   });
 };
@@ -378,64 +455,71 @@ export const documentKeys = {
   },
 };
 
-export const useDocuments = (params?: { page?: number; page_size?: number; category?: string; q?: string }) => {
+export const useDocuments = (params?: { page?: number; page_size?: number; category_id?: number }) => {
   return useQuery({
     queryKey: documentKeys.list(params),
     queryFn: async () => {
-      const response = await api.v1DocumentsList(params || {});
-      return (response.data as any)?.data ? response.data : { data: response.data };
+      // Use fetch for documents endpoint
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+      if (params?.category_id) queryParams.append('category_id', params.category_id.toString());
+      
+      const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/documents?${queryParams}`);
+      return response.json();
     },
     staleTime: 60000,
   });
 };
 
-export const useDocumentBySlug = (slug: string) => {
-  return useQuery({
-    queryKey: documentKeys.detail(slug),
-    queryFn: async () => {
-      const response = await api.v1DocumentsDetail({ slug });
-      return (response.data as any)?.data || response.data;
-    },
-    enabled: !!slug,
-    staleTime: 60000,
-  });
-};
-
-export const useAdminDocuments = (params?: any) => {
+export const useAdminDocuments = (params?: { page?: number; page_size?: number; status?: string; category_id?: number }) => {
   return useQuery({
     queryKey: documentKeys.admin.list(params),
     queryFn: async () => {
-      const response = await api.v1AdminDocumentsList(params || {});
-      return (response.data as any)?.data ? response.data : { data: response.data };
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.category_id) queryParams.append('category_id', params.category_id.toString());
+      
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/admin/documents?${queryParams}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+      return response.json();
     },
     staleTime: 30000,
   });
 };
 
-export const useCreateDocument = () => {
+export const useUploadDocument = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.v1AdminDocumentsCreate(data);
-      return response.data;
+    mutationFn: async (formData: FormData) => {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/admin/documents/upload`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Upload failed');
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: documentKeys.admin.lists() });
-      queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
-    },
-  });
-};
-
-export const useUpdateDocument = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const response = await api.v1AdminDocumentsUpdate({ id }, data);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: documentKeys.admin.lists() });
-      queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
     },
   });
 };
@@ -444,12 +528,24 @@ export const useDeleteDocument = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const response = await api.v1AdminDocumentsDelete({ id });
-      return response.data;
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE || 'http://localhost:8080/api/v1'}/admin/documents/${id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Delete failed');
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: documentKeys.admin.lists() });
-      queryClient.invalidateQueries({ queryKey: documentKeys.lists() });
     },
   });
 };

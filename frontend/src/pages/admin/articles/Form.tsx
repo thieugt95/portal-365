@@ -14,6 +14,20 @@ import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import ConfirmModal from '../../../components/Common';
 import RichTextEditor from '../../../components/editor/RichTextEditor';
 import ImageUpload from '../../../components/editor/ImageUpload';
+import AdminTopBar from '../../../components/admin/AdminTopBar';
+
+// Chuẩn hóa tên thành slug
+function toSlug(input?: string) {
+  if (!input) return '';
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+type GroupSlug = 'hoat-dong' | 'tin-tuc';
 
 export default function ArticleForm() {
   const { id } = useParams();
@@ -28,14 +42,37 @@ export default function ArticleForm() {
   const deleteArticle = useDeleteArticle();
   const submitForReview = useSubmitArticleForReview();
 
-  // Group categories by parent
-  const { parentCategories, subcategories } = useMemo(() => {
-    const parents = categories.filter((c) => !c.parent_id);
-    const subs = categories.filter((c) => c.parent_id);
-    return { parentCategories: parents, subcategories: subs };
+  // Lọc chỉ 2 nhóm cha: Hoạt động và Tin tức
+  const { parentBySlug, subcategoriesByParent } = useMemo(() => {
+    const parentMap = new Map<GroupSlug, any>();
+    const subsByParent = new Map<number, any[]>();
+
+    // Tìm parent categories
+    categories.forEach((cat) => {
+      if (!cat.parent_id) {
+        const normalized = toSlug(cat.slug || cat.name);
+        if (normalized === 'hoat-dong' || normalized === 'hoatdong') {
+          parentMap.set('hoat-dong', cat);
+        } else if (normalized === 'tin-tuc' || normalized === 'tintuc') {
+          parentMap.set('tin-tuc', cat);
+        }
+      }
+    });
+
+    // Group subcategories by parent_id
+    categories.forEach((cat) => {
+      if (cat.parent_id) {
+        if (!subsByParent.has(cat.parent_id)) {
+          subsByParent.set(cat.parent_id, []);
+        }
+        subsByParent.get(cat.parent_id)!.push(cat);
+      }
+    });
+
+    return { parentBySlug: parentMap, subcategoriesByParent: subsByParent };
   }, [categories]);
 
-  const [selectedParent, setSelectedParent] = useState<number | null>(null);
+  const [selectedGroupSlug, setSelectedGroupSlug] = useState<GroupSlug>('hoat-dong');
 
   const [formData, setFormData] = useState<DtoCreateArticleRequest>({
     title: '',
@@ -50,8 +87,16 @@ export default function ArticleForm() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
+  // Available subcategories cho group hiện tại
+  const availableSubcategories = useMemo(() => {
+    const parent = parentBySlug.get(selectedGroupSlug);
+    if (!parent) return [];
+    return subcategoriesByParent.get(parent.id) || [];
+  }, [selectedGroupSlug, parentBySlug, subcategoriesByParent]);
+
+  // Xác định group từ category_id khi load article
   useEffect(() => {
-    if (article) {
+    if (article && categories.length > 0) {
       setFormData({
         title: article.title,
         slug: article.slug,
@@ -64,12 +109,56 @@ export default function ArticleForm() {
         scheduled_at: article.scheduled_at || undefined,
       });
 
-      // Set parent category for UI
-      if (article.category?.parent_id) {
-        setSelectedParent(article.category.parent_id);
+      // Tìm group từ category_id
+      const cat = categories.find(c => c.id === article.category_id);
+      if (cat?.parent_id) {
+        // Tìm parent của category này
+        const parent = categories.find(c => c.id === cat.parent_id);
+        if (parent) {
+          const normalized = toSlug(parent.slug || parent.name);
+          if (normalized === 'hoat-dong' || normalized === 'hoatdong') {
+            setSelectedGroupSlug('hoat-dong');
+          } else if (normalized === 'tin-tuc' || normalized === 'tintuc') {
+            setSelectedGroupSlug('tin-tuc');
+          }
+        }
       }
     }
-  }, [article]);
+  }, [article, categories]);
+
+  // Khi đổi group, tự động chọn subcategory đầu tiên
+  useEffect(() => {
+    if (availableSubcategories.length > 0 && !isEditMode) {
+      // Chỉ auto-select khi tạo mới
+      setFormData(prev => ({
+        ...prev,
+        category_id: availableSubcategories[0].id
+      }));
+    }
+  }, [selectedGroupSlug, availableSubcategories, isEditMode]);
+
+  // Handle group change
+  const handleGroupChange = (groupSlug: GroupSlug) => {
+    setSelectedGroupSlug(groupSlug);
+    
+    // Tự động chọn subcategory đầu tiên của nhóm mới
+    const parent = parentBySlug.get(groupSlug);
+    if (parent) {
+      const subs = subcategoriesByParent.get(parent.id) || [];
+      if (subs.length > 0) {
+        setFormData(prev => ({
+          ...prev,
+          category_id: subs[0].id
+        }));
+      } else {
+        // Xóa category_id nếu không có subcategory
+        setFormData(prev => ({
+          ...prev,
+          category_id: 0
+        }));
+      }
+    }
+  };
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -152,7 +241,10 @@ export default function ArticleForm() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="min-h-screen bg-gray-100">
+      <AdminTopBar title={isEditMode ? 'Chỉnh sửa bài viết' : 'Tạo bài viết mới'} />
+      
+      <div className="max-w-4xl mx-auto p-6">
       {toast && (
         <Toast
           message={toast.message}
@@ -252,57 +344,70 @@ export default function ArticleForm() {
           error={errors.featured_image}
         />
 
-        {/* Category - Hierarchical Selection */}
+        {/* Category - Only 2 Groups: Hoạt động & Tin tức */}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Nhóm chuyên mục <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {parentCategories.map((parent) => (
-                <button
-                  key={parent.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedParent(parent.id);
-                    setFormData({ ...formData, category_id: 0 }); // Reset subcategory
-                  }}
-                  className={`px-4 py-2 rounded text-sm ${
-                    selectedParent === parent.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {parent.name}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleGroupChange('hoat-dong')}
+                className={`px-6 py-3 rounded-lg font-medium transition-all ${
+                  selectedGroupSlug === 'hoat-dong'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Hoạt động
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGroupChange('tin-tuc')}
+                className={`px-6 py-3 rounded-lg font-medium transition-all ${
+                  selectedGroupSlug === 'tin-tuc'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Tin tức
+              </button>
             </div>
+            {!parentBySlug.has(selectedGroupSlug) && (
+              <p className="mt-2 text-sm text-amber-600">
+                ⚠️ Chưa có nhóm "{selectedGroupSlug === 'hoat-dong' ? 'Hoạt động' : 'Tin tức'}" trong hệ thống.
+              </p>
+            )}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Chuyên mục con <span className="text-red-500">*</span>
+              Chuyên mục <span className="text-red-500">*</span>
             </label>
-            <select
-              value={formData.category_id}
-              onChange={(e) => {
-                setFormData({ ...formData, category_id: Number(e.target.value) });
-                setErrors({ ...errors, category_id: '' });
-              }}
-              disabled={!selectedParent}
-              className={`w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.category_id ? 'border-red-500' : ''
-              } ${!selectedParent ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-            >
-              <option value={0}>Chọn chuyên mục con</option>
-              {subcategories
-                .filter((sub) => sub.parent_id === selectedParent)
-                .map((sub) => (
+            {availableSubcategories.length === 0 ? (
+              <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                Chưa có chuyên mục con cho nhóm này. Vui lòng tạo chuyên mục trước.
+              </div>
+            ) : (
+              <select
+                value={formData.category_id}
+                onChange={(e) => {
+                  setFormData({ ...formData, category_id: Number(e.target.value) });
+                  setErrors({ ...errors, category_id: '' });
+                }}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.category_id ? 'border-red-500' : ''
+                }`}
+              >
+                <option value={0}>Chọn chuyên mục</option>
+                {availableSubcategories.map((sub) => (
                   <option key={sub.id} value={sub.id}>
                     {sub.name}
                   </option>
                 ))}
-            </select>
+              </select>
+            )}
             {errors.category_id && <p className="mt-1 text-sm text-red-500">{errors.category_id}</p>}
           </div>
         </div>
@@ -394,6 +499,7 @@ export default function ArticleForm() {
         message="Bạn có chắc chắn muốn xóa bài viết này? Hành động này không thể hoàn tác."
         variant="danger"
       />
+      </div>
     </div>
   );
 }

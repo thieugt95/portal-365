@@ -2,10 +2,17 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/thieugt95/portal-365/backend/internal/database"
 	"github.com/thieugt95/portal-365/backend/internal/dto"
 	"github.com/thieugt95/portal-365/backend/internal/middleware"
@@ -231,4 +238,167 @@ func (h *DocumentsHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dto.SuccessResponse{Data: "Document deleted successfully"})
+}
+
+const (
+	MaxDocumentSize      = 10 * 1024 * 1024 // 10MB
+	DocumentUploadDir    = "./storage/uploads/documents"
+	DocumentStaticPrefix = "/static/uploads/documents"
+)
+
+var AllowedDocumentMIME = map[string]string{
+	"application/pdf":    ".pdf",
+	"application/msword": ".doc",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+	"application/vnd.ms-excel": ".xls",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+}
+
+// @Summary Upload document file
+// @Description Upload a document file (PDF, DOC, DOCX, XLS, XLSX)
+// @Tags documents
+// @Security Bearer
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "Document file (max 10MB)"
+// @Param title formData string true "Document title"
+// @Param description formData string false "Document description"
+// @Param category_id formData int true "Category ID"
+// @Param document_no formData string false "Document number"
+// @Param issued_date formData string false "Issued date (RFC3339)"
+// @Success 201 {object} dto.SuccessResponse{data=models.Document}
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 401 {object} dto.ErrorResponse
+// @Failure 500 {object} dto.ErrorResponse
+// @Router /api/v1/admin/documents/upload [post]
+func (h *DocumentsHandler) Upload(c *gin.Context) {
+	// 1. Get file from multipart form
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		middleware.AbortWithError(c, http.StatusBadRequest, "invalid_file", "File is required")
+		return
+	}
+	defer file.Close()
+
+	// 2. Validate file size
+	if header.Size > MaxDocumentSize {
+		middleware.AbortWithError(c, http.StatusBadRequest, "file_too_large",
+			fmt.Sprintf("File size exceeds maximum of %d MB", MaxDocumentSize/(1024*1024)))
+		return
+	}
+
+	// 3. Validate MIME type
+	contentType := header.Header.Get("Content-Type")
+	ext, allowed := AllowedDocumentMIME[contentType]
+	if !allowed {
+		middleware.AbortWithError(c, http.StatusBadRequest, "invalid_file_type",
+			"Only PDF, DOC, DOCX, XLS, XLSX files are allowed")
+		return
+	}
+
+	// 4. Verify magic bytes
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil && err != io.EOF {
+		middleware.AbortWithError(c, http.StatusInternalServerError, "file_read_error", "Failed to read file")
+		return
+	}
+	detectedType := http.DetectContentType(buffer)
+	if _, ok := AllowedDocumentMIME[detectedType]; !ok && !strings.HasPrefix(detectedType, "application/") {
+		middleware.AbortWithError(c, http.StatusBadRequest, "invalid_file_type",
+			"File content does not match allowed document types")
+		return
+	}
+
+	// Reset file pointer
+	if _, err := file.Seek(0, 0); err != nil {
+		middleware.AbortWithError(c, http.StatusInternalServerError, "file_read_error", "Failed to reset file pointer")
+		return
+	}
+
+	// 5. Create directory structure: YYYY/MM
+	now := time.Now()
+	yearMonth := now.Format("2006/01")
+	uploadPath := filepath.Join(DocumentUploadDir, yearMonth)
+	if err := os.MkdirAll(uploadPath, 0755); err != nil {
+		middleware.AbortWithError(c, http.StatusInternalServerError, "storage_error", "Failed to create upload directory")
+		return
+	}
+
+	// 6. Generate unique filename
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(header.Filename))
+	}
+	filename := fmt.Sprintf("%s-%s%s", now.Format("20060102-150405"), uuid.New().String()[:8], ext)
+	filePath := filepath.Join(uploadPath, filename)
+
+	// 7. Save file
+	dst, err := os.Create(filePath)
+	if err != nil {
+		middleware.AbortWithError(c, http.StatusInternalServerError, "storage_error", "Failed to create file")
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		os.Remove(filePath)
+		middleware.AbortWithError(c, http.StatusInternalServerError, "storage_error", "Failed to save file")
+		return
+	}
+
+	// 8. Get form data
+	title := c.PostForm("title")
+	if title == "" {
+		title = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	}
+	description := c.PostForm("description")
+	categoryIDStr := c.PostForm("category_id")
+	documentNo := c.PostForm("document_no")
+	issuedDateStr := c.PostForm("issued_date")
+
+	categoryID, err := strconv.ParseInt(categoryIDStr, 10, 64)
+	if err != nil {
+		os.Remove(filePath)
+		middleware.AbortWithError(c, http.StatusBadRequest, "invalid_category", "Category ID is required")
+		return
+	}
+
+	// Parse issued date if provided
+	var issuedDate *time.Time
+	if issuedDateStr != "" {
+		parsed, err := time.Parse(time.RFC3339, issuedDateStr)
+		if err == nil {
+			issuedDate = &parsed
+		}
+	}
+
+	// 9. Generate slug from title
+	slug := generateSlug(title)
+
+	// 10. Create document record
+	userID, _ := c.Get("user_id")
+	fileURL := fmt.Sprintf("%s/%s/%s", DocumentStaticPrefix, yearMonth, filename)
+
+	document := &models.Document{
+		Title:       title,
+		Slug:        slug,
+		Description: description,
+		CategoryID:  categoryID,
+		FileURL:     fileURL,
+		FileName:    header.Filename,
+		FileSize:    header.Size,
+		FileType:    contentType,
+		DocumentNo:  documentNo,
+		IssuedDate:  issuedDate,
+		UploadedBy:  userID.(int64),
+		Status:      "draft",
+	}
+
+	if err := h.repo.Create(c.Request.Context(), document); err != nil {
+		os.Remove(filePath)
+		middleware.AbortWithError(c, http.StatusInternalServerError, "database_error", "Failed to save document record")
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.SuccessResponse{Data: document})
 }

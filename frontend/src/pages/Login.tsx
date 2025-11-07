@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../context/AuthProvider';
+import { authService } from '../lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -9,7 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { revalidate } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,20 +18,26 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login({ email, password });
+      // authService.login nhận 2 tham số riêng biệt (email, password)
+      const loginData = await authService.login(email, password);
+      
+      // authService.login đã tự động lưu tokens và user vào localStorage
+      // Chỉ cần revalidate auth context
+      revalidate();
       
       // Check for redirect query parameter
       const params = new URLSearchParams(location.search);
       const redirectTo = params.get('redirect');
       
-      // Navigate to redirect URL if valid, otherwise go to /admin
-      if (redirectTo && redirectTo.startsWith('/admin')) {
-        navigate(redirectTo, { replace: true });
+      // Navigate to redirect URL if exists, otherwise go to /admin
+      if (redirectTo) {
+        navigate(decodeURIComponent(redirectTo), { replace: true });
       } else {
         navigate('/admin', { replace: true });
       }
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Login failed');
+      console.error('Login error:', err);
+      setError(err.response?.data?.error?.message || err.message || 'Đăng nhập thất bại');
     } finally {
       setLoading(false);
     }

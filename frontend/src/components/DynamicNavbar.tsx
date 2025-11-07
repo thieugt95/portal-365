@@ -4,6 +4,7 @@ import { Search, LogIn, Menu, X, ChevronDown } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../lib/apiClient';
 import { NAVIGATION_MENU, isMenuItemActive, type MenuItem } from '../config/navigation';
+import AuthButton from './AuthButton';
 
 interface ApiMenu {
   id: number;
@@ -229,14 +230,10 @@ const DynamicNavbar = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-sky-500" />
             </form>
 
-            {/* Login Button */}
-            <NavLink
-              to="/login"
-              className="flex items-center gap-2 px-4 py-2 ml-4 bg-yellow-500 hover:bg-yellow-600 text-blue-900 rounded-full font-semibold transition-colors text-sm whitespace-nowrap"
-            >
-              <LogIn className="w-5 h-5" />
-              <span>Đăng nhập</span>
-            </NavLink>
+            {/* Auth Button */}
+            <div className="ml-4">
+              <AuthButton />
+            </div>
           </div>
         </div>
 
@@ -282,15 +279,10 @@ const DynamicNavbar = () => {
                 Bình dân học vụ số
               </a>
 
-              {/* Login Mobile */}
-              <NavLink
-                to="/login"
-                className="flex items-center gap-2 mx-4 mt-4 px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-blue-900 rounded-lg font-semibold justify-center transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Đăng nhập</span>
-              </NavLink>
+              {/* Auth Button Mobile */}
+              <div className="px-4 mt-4">
+                <AuthButton />
+              </div>
             </div>
           )}
         </div>

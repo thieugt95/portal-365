@@ -1,11 +1,12 @@
-﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+﻿import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { useAuth } from './context/AuthProvider';
 
 // Pages
 import HomePage from './pages/Home';
 import LoginPage from './pages/Login';
-import ArticlePage from './pages/Article';
+import ArticlePage from './pages/article/ArticlePage';
+import CategoryPage from './pages/category/CategoryPage';
 import CategoryDetailPage from './pages/CategoryDetail';
 import SearchPage from './pages/Search';
 import IntroPage from './pages/Intro';
@@ -45,30 +46,38 @@ const queryClient = new QueryClient({
 
 // Protected Route Component
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
   
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
+  if (!isAuthenticated) {
+    // Lưu đường dẫn hiện tại để redirect sau khi login
+    const redirectPath = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
   
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+// Redirect old article URLs to new format
+function RedirectToArticle() {
+  const { slug } = useParams<{ slug: string }>();
+  return <Navigate to={`/a/${slug}`} replace />;
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
+      <BrowserRouter>
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/a/:slug" element={<ArticlePage />} />
-            <Route path="/c/:slug" element={<CategoryListPage />} />
+            {/* Redirect old article URLs */}
+            <Route path="/articles/:slug" element={<RedirectToArticle />} />
+            {/* New category pages */}
+            <Route path="/c/:slug" element={<CategoryPage />} />
+            {/* Legacy category routes */}
             <Route path="/category/:slug" element={<CategoryDetailPage />} />
             <Route path="/documents/:slug" element={<CategoryDetailPage />} />
             <Route path="/media/:slug" element={<CategoryDetailPage />} />
@@ -250,7 +259,6 @@ function App() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -7,15 +7,28 @@ import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import Toast from '../../../components/common/Toast';
 import { normalizeError } from '../../../lib/apiClient';
 import { useDeleteArticle, usePublishArticle, useUnpublishArticle } from '../../../hooks/useApi';
+import AdminTopBar from '../../../components/admin/AdminTopBar';
+
+// Chuẩn hóa tên thành slug
+function toSlug(input?: string) {
+  if (!input) return '';
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 type ArticleStatus = 'draft' | 'under_review' | 'published' | 'hidden' | 'rejected';
+type GroupSlug = 'hoat-dong' | 'tin-tuc';
 
 export default function ArticlesList() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [parentCategory, setParentCategory] = useState<string>(''); // 'hoat-dong' or 'tin-tuc'
-  const [categorySlug, setCategorySlug] = useState<string>('');
+  const [selectedGroupSlug, setSelectedGroupSlug] = useState<GroupSlug | ''>('');
+  const [categoryId, setCategoryId] = useState<number>(0);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<ArticleStatus | ''>('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -23,11 +36,56 @@ export default function ArticlesList() {
   const { categories, isLoading: categoriesLoading } = useCategories();
   const { tags, isLoading: tagsLoading } = useTags();
   
+  // Lọc chỉ 2 nhóm cha: Hoạt động và Tin tức
+  const { parentBySlug, subcategoriesByParent, allSubcategories } = useMemo(() => {
+    const parentMap = new Map<GroupSlug, any>();
+    const subsByParent = new Map<number, any[]>();
+    const allSubs: any[] = [];
+
+    // Tìm parent categories
+    categories.forEach((cat) => {
+      if (!cat.parent_id) {
+        const normalized = toSlug(cat.slug || cat.name);
+        if (normalized === 'hoat-dong' || normalized === 'hoatdong') {
+          parentMap.set('hoat-dong', cat);
+        } else if (normalized === 'tin-tuc' || normalized === 'tintuc') {
+          parentMap.set('tin-tuc', cat);
+        }
+      }
+    });
+
+    // Group subcategories by parent_id
+    categories.forEach((cat) => {
+      if (cat.parent_id) {
+        // Chỉ thêm nếu parent thuộc 2 nhóm hợp lệ
+        const parentInGroup = Array.from(parentMap.values()).find(p => p.id === cat.parent_id);
+        if (parentInGroup) {
+          if (!subsByParent.has(cat.parent_id)) {
+            subsByParent.set(cat.parent_id, []);
+          }
+          subsByParent.get(cat.parent_id)!.push(cat);
+          allSubs.push(cat);
+        }
+      }
+    });
+
+    return { parentBySlug: parentMap, subcategoriesByParent: subsByParent, allSubcategories: allSubs };
+  }, [categories]);
+
+  // Available subcategories cho group hiện tại
+  const availableSubcategories = useMemo(() => {
+    if (!selectedGroupSlug) return allSubcategories;
+    const parent = parentBySlug.get(selectedGroupSlug);
+    if (!parent) return [];
+    return subcategoriesByParent.get(parent.id) || [];
+  }, [selectedGroupSlug, parentBySlug, subcategoriesByParent, allSubcategories]);
+
+  // Fetch articles với category_id filter
   const { articles, pagination, isLoading, error } = useAdminArticles({
     page,
     page_size: 20,
     q: search || undefined,
-    category_slug: categorySlug || undefined,
+    category_id: categoryId || undefined,
     tag_slugs: selectedTags.length > 0 ? selectedTags : undefined,
     status: statusFilter || undefined,
   });
@@ -36,29 +94,25 @@ export default function ArticlesList() {
   const publishArticle = usePublishArticle();
   const unpublishArticle = useUnpublishArticle();
 
-  // Group categories by parent
-  const { parentCategories, subcategories } = useMemo(() => {
-    const parents = categories.filter((c) => !c.parent_id);
-    const subs = categories.filter((c) => c.parent_id);
-    return { parentCategories: parents, subcategories: subs };
-  }, [categories]);
-
-  // Get subcategories for selected parent
-  const availableSubcategories = useMemo(() => {
-    if (!parentCategory) return subcategories;
-    const parent = parentCategories.find((p) => p.slug === parentCategory);
-    if (!parent) return [];
-    return subcategories.filter((s) => s.parent_id === parent.id);
-  }, [parentCategory, parentCategories, subcategories]);
-
-  const handleParentCategoryChange = (slug: string) => {
-    setParentCategory(slug);
-    setCategorySlug(''); // Reset subcategory
+  const handleGroupChange = (groupSlug: GroupSlug | '') => {
+    setSelectedGroupSlug(groupSlug);
+    setCategoryId(0); // Reset subcategory
     setPage(1);
+    
+    // Tự động chọn subcategory đầu tiên nếu có
+    if (groupSlug) {
+      const parent = parentBySlug.get(groupSlug);
+      if (parent) {
+        const subs = subcategoriesByParent.get(parent.id) || [];
+        if (subs.length > 0) {
+          setCategoryId(subs[0].id);
+        }
+      }
+    }
   };
 
-  const handleSubcategoryChange = (slug: string) => {
-    setCategorySlug(slug);
+  const handleSubcategoryChange = (catId: number) => {
+    setCategoryId(catId);
     setPage(1);
   };
 
@@ -127,7 +181,10 @@ export default function ArticlesList() {
   }
 
   return (
-    <div className="p-6">
+    <div className="min-h-screen bg-gray-100">
+      <AdminTopBar title="Quản lý bài viết" />
+      
+      <div className="p-6">
       {toast && (
         <Toast
           message={toast.message}
@@ -178,48 +235,55 @@ export default function ArticlesList() {
           </select>
         </div>
 
-        {/* Row 2: Parent Category and Subcategory */}
+        {/* Row 2: Group & Subcategory - Only Hoạt động & Tin tức */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nhóm chuyên mục</label>
             <div className="flex gap-2">
               <button
-                onClick={() => handleParentCategoryChange('')}
-                className={`flex-1 px-4 py-2 rounded ${
-                  !parentCategory
+                onClick={() => handleGroupChange('')}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium ${
+                  !selectedGroupSlug
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 Tất cả
               </button>
-              {parentCategories.map((parent) => (
-                <button
-                  key={parent.id}
-                  onClick={() => handleParentCategoryChange(parent.slug)}
-                  className={`flex-1 px-4 py-2 rounded ${
-                    parentCategory === parent.slug
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {parent.name}
-                </button>
-              ))}
+              <button
+                onClick={() => handleGroupChange('hoat-dong')}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium ${
+                  selectedGroupSlug === 'hoat-dong'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Hoạt động
+              </button>
+              <button
+                onClick={() => handleGroupChange('tin-tuc')}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium ${
+                  selectedGroupSlug === 'tin-tuc'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Tin tức
+              </button>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Chuyên mục con</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Chuyên mục</label>
             <select
-              value={categorySlug}
-              onChange={(e) => handleSubcategoryChange(e.target.value)}
-              className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={!parentCategory && availableSubcategories.length === 0}
+              value={categoryId}
+              onChange={(e) => handleSubcategoryChange(Number(e.target.value))}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={availableSubcategories.length === 0}
             >
-              <option value="">Tất cả</option>
+              <option value={0}>Tất cả chuyên mục</option>
               {availableSubcategories.map((sub) => (
-                <option key={sub.id} value={sub.slug}>
+                <option key={sub.id} value={sub.id}>
                   {sub.name}
                 </option>
               ))}
@@ -392,6 +456,7 @@ export default function ArticlesList() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Upload, Edit, Trash2, Download, FileText, Search, Eye } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import { useAdminDocuments, useUploadDocument, useDeleteDocument } from '../../../hooks/useApi';
 
 interface Document {
   id: number;
@@ -12,11 +13,9 @@ interface Document {
   file_type: string;
   file_size: number;
   file_url: string;
-  download_url: string;
-  preview_url?: string;
-  year?: number;
-  category?: string;
-  tags?: string[];
+  file_name: string;
+  document_no?: string;
+  category_id: number;
   status: string;
   published_at?: string;
   created_at: string;
@@ -27,21 +26,38 @@ export default function DocumentsList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [fileType, setFileType] = useState('all');
-  const [isUploading, setIsUploading] = useState(false);
 
-  // TODO: Replace with actual API call
-  const isLoading = false;
-  const error = null;
-  const documents: Document[] = [];
-  const pagination = { page: 1, page_size: 20, total: 0, total_pages: 0 };
+  // Fetch documents from API
+  const { data, isLoading, error } = useAdminDocuments({ page, page_size: 20 });
+  const uploadMutation = useUploadDocument();
+  const deleteMutation = useDeleteDocument();
+
+  const documents: Document[] = data?.data || [];
+  const pagination = data?.pagination || { page: 1, page_size: 20, total: 0, total_pages: 0 };
+
+  // Debug logging
+  console.log('Admin Documents Debug:', {
+    isLoading,
+    error,
+    dataReceived: !!data,
+    documentsCount: documents.length,
+    pagination,
+    rawData: data
+  });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const allowedTypes = [
+      'application/pdf', 
+      'application/msword', 
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
     if (!allowedTypes.includes(file.type)) {
-      alert('Chỉ hỗ trợ file PDF, DOC, DOCX');
+      alert('Chỉ hỗ trợ file PDF, DOC, DOCX, XLS, XLSX');
       return;
     }
 
@@ -51,28 +67,28 @@ export default function DocumentsList() {
       return;
     }
 
-    setIsUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('title', file.name);
+      formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
+      formData.append('category_id', '11'); // Default to "Kho văn bản" category
       
-      // TODO: Implement upload API call
-      console.log('Uploading:', file.name);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      await uploadMutation.mutateAsync(formData);
       alert('Upload thành công!');
-    } catch (err) {
-      alert('Upload thất bại');
-    } finally {
-      setIsUploading(false);
+      e.target.value = ''; // Reset file input
+    } catch (err: any) {
+      alert(err.message || 'Upload thất bại');
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('Xóa văn bản này?')) return;
-    // TODO: Implement delete
-    console.log('Delete', id);
+    try {
+      await deleteMutation.mutateAsync(id);
+      alert('Xóa thành công!');
+    } catch (err: any) {
+      alert(err.message || 'Xóa thất bại');
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -111,14 +127,14 @@ export default function DocumentsList() {
             <h1 className="text-2xl font-bold text-gray-900">Kho Văn bản</h1>
             <p className="text-gray-600 mt-1">Quản lý văn bản PDF, DOC, DOCX</p>
           </div>
-          <label className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer">
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             <Upload className="w-5 h-5" />
-            {isUploading ? 'Đang tải lên...' : 'Upload văn bản'}
+            {uploadMutation.isPending ? 'Đang tải lên...' : 'Upload văn bản'}
             <input
               type="file"
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,.doc,.docx,.xls,.xlsx"
               onChange={handleFileUpload}
-              disabled={isUploading}
+              disabled={uploadMutation.isPending}
               className="hidden"
             />
           </label>
@@ -218,35 +234,27 @@ export default function DocumentsList() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">
-                          {doc.preview_url && (
-                            <a
-                              href={doc.preview_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-900"
-                              title="Xem trước"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </a>
-                          )}
                           <a
-                            href={doc.download_url}
-                            download
+                            href={`http://localhost:8080${doc.file_url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Xem"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </a>
+                          <a
+                            href={`http://localhost:8080${doc.file_url}`}
+                            download={doc.file_name}
                             className="text-green-600 hover:text-green-900"
                             title="Tải xuống"
                           >
                             <Download className="w-4 h-4" />
                           </a>
-                          <Link
-                            to={`/admin/docs/${doc.id}/edit`}
-                            className="text-yellow-600 hover:text-yellow-900"
-                            title="Sửa"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Link>
                           <button
                             onClick={() => handleDelete(doc.id)}
-                            className="text-red-600 hover:text-red-900"
+                            disabled={deleteMutation.isPending}
+                            className="text-red-600 hover:text-red-900 disabled:opacity-50"
                             title="Xóa"
                           >
                             <Trash2 className="w-4 h-4" />

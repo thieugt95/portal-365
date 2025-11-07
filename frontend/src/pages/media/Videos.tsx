@@ -1,52 +1,50 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Play } from 'lucide-react';
+import { Play, Search, Eye, Clock } from 'lucide-react';
 import Header from '../../components/Header';
 import DynamicNavbar from '../../components/DynamicNavbar';
 import SiteFooter from '../../components/layout/SiteFooter';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Pagination from '../../components/common/Pagination';
-import VideoCard from '../../components/cards/VideoCard';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Modal from '../../components/common/Modal';
 import { getBreadcrumbs } from '../../config/navigation';
-
-// Dummy videos data
-const DUMMY_VIDEOS = [
-  {
-    id: 1,
-    title: 'Lễ khai mạc diễn tập khu vực phòng thủ Sư đoàn 365',
-    thumbnail_url: 'https://picsum.photos/seed/video1/640/360',
-    video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    duration: 1245,
-    view_count: 15234,
-    published_at: '2025-01-15T09:00:00Z'
-  },
-  {
-    id: 2,
-    title: 'Hội thao quân sự Sư đoàn 365 năm 2025',
-    thumbnail_url: 'https://picsum.photos/seed/video2/640/360',
-    video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    duration: 890,
-    view_count: 12567,
-    published_at: '2025-01-14T10:00:00Z'
-  }
-];
+import { usePublicMediaItems } from '../../hooks/useApi';
 
 const ITEMS_PER_PAGE = 12;
 
 export default function MediaVideos() {
   const location = useLocation();
   const [currentPage, setCurrentPage] = useState(1);
-  const [playingVideo, setPlayingVideo] = useState<typeof DUMMY_VIDEOS[0] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [playingVideo, setPlayingVideo] = useState<any>(null);
+
+  // Fetch videos from API
+  const { data, isLoading, error } = usePublicMediaItems({ 
+    page: currentPage, 
+    page_size: ITEMS_PER_PAGE,
+    media_type: 'video'
+  });
+
+  const videos = data?.data || [];
+  const pagination = data?.pagination || { page: 1, page_size: ITEMS_PER_PAGE, total: 0, total_pages: 1 };
 
   // Get breadcrumbs from navigation config
   const breadcrumbs = getBreadcrumbs(location.pathname);
 
-  const totalPages = Math.ceil(DUMMY_VIDEOS.length / ITEMS_PER_PAGE);
-  const paginatedVideos = DUMMY_VIDEOS.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+  // Filter videos by search
+  const filteredVideos = videos.filter((video: any) => 
+    !searchQuery || 
+    video.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    video.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -60,26 +58,93 @@ export default function MediaVideos() {
             Thư viện video
           </h1>
           <p className="text-gray-600">
-            Video về các hoạt động, sự kiện của Sư đoàn 365
+            Video về các hoạt động, sự kiện ({pagination.total} videos)
           </p>
         </div>
 
-        {paginatedVideos.length > 0 ? (
+        {/* Search */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-8">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Tìm kiếm video..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12">
+            <LoadingSpinner />
+            <p className="text-gray-600 mt-4">Đang tải video...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <Play className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <p className="text-red-600">Không thể tải dữ liệu. Vui lòng thử lại.</p>
+          </div>
+        ) : filteredVideos.length > 0 ? (
           <>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
-              {paginatedVideos.map((video) => (
-                <VideoCard
-                  key={video.id}
-                  video={video}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              {filteredVideos.map((video: any) => (
+                <div 
+                  key={video.id} 
+                  className="group bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden cursor-pointer"
                   onClick={() => setPlayingVideo(video)}
-                />
+                >
+                  <div className="relative aspect-video bg-gray-200">
+                    <img
+                      src={video.thumbnail_url || 'https://via.placeholder.com/640x360?text=Video'}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center group-hover:bg-opacity-50 transition-opacity">
+                      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+                        <Play className="w-8 h-8 text-green-600 ml-1" fill="currentColor" />
+                      </div>
+                    </div>
+                    {video.duration && (
+                      <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
+                        <Clock className="w-3 h-3 inline mr-1" />
+                        {formatDuration(video.duration)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                      {video.title}
+                    </h3>
+                    {video.description && (
+                      <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                        {video.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      {video.view_count !== undefined && (
+                        <span className="flex items-center gap-1">
+                          <Eye className="w-4 h-4" />
+                          {video.view_count.toLocaleString()} lượt xem
+                        </span>
+                      )}
+                      {video.published_at && (
+                        <span>
+                          {new Date(video.published_at).toLocaleDateString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
 
-            {totalPages > 1 && (
+            {pagination.total_pages > 1 && (
               <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
+                currentPage={pagination.page}
+                totalPages={pagination.total_pages}
                 onPageChange={setCurrentPage}
               />
             )}
@@ -87,7 +152,9 @@ export default function MediaVideos() {
         ) : (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <Play className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">Chưa có video nào</p>
+            <p className="text-gray-500">
+              {searchQuery ? 'Không tìm thấy video phù hợp' : 'Chưa có video nào'}
+            </p>
           </div>
         )}
       </main>
@@ -99,14 +166,29 @@ export default function MediaVideos() {
           onClose={() => setPlayingVideo(null)}
           title={playingVideo.title}
         >
-          <div className="w-full aspect-video">
-            <iframe
-              src={playingVideo.video_url}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              title={playingVideo.title}
-            />
+          <div className="w-full">
+            <div className="aspect-video bg-black">
+              {playingVideo.url ? (
+                <video
+                  src={playingVideo.url}
+                  controls
+                  autoPlay
+                  className="w-full h-full"
+                >
+                  Trình duyệt của bạn không hỗ trợ phát video.
+                </video>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white">
+                  <p>Video không khả dụng</p>
+                </div>
+              )}
+            </div>
+            {playingVideo.description && (
+              <div className="mt-4">
+                <h4 className="font-semibold mb-2">Mô tả</h4>
+                <p className="text-gray-600">{playingVideo.description}</p>
+              </div>
+            )}
           </div>
         </Modal>
       )}

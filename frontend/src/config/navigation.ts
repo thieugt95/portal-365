@@ -1,5 +1,7 @@
 // Navigation menu structure and configuration
 
+import { CATEGORY_SLUGS } from './categorySlugs';
+
 export interface MenuItem {
   id: string;
   label: string;
@@ -7,6 +9,8 @@ export interface MenuItem {
   children?: MenuItem[];
   prefetchKey?: string[];
 }
+
+export type NavItem = MenuItem;
 
 /**
  * Fallback navigation menu structure
@@ -56,21 +60,21 @@ export const NAVIGATION_MENU: MenuItem[] = [
       },
       {
         id: 'activities-thu-truong',
-        label: 'Hoạt động của Thủ trưởng',
-        path: '/c/hoat-dong-cua-thu-truong',
-        prefetchKey: ['articles', 'hoat-dong-cua-thu-truong']
+        label: 'Hoạt động của Thủ trưởng sư đoàn',
+        path: `/c/${CATEGORY_SLUGS.THU_TRUONG}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.THU_TRUONG]
       },
       {
         id: 'activities-su-doan',
         label: 'Hoạt động của Sư đoàn',
-        path: '/c/hoat-dong-cua-su-doan',
-        prefetchKey: ['articles', 'hoat-dong-cua-su-doan']
+        path: `/c/${CATEGORY_SLUGS.SU_DOAN}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.SU_DOAN]
       },
       {
         id: 'activities-don-vi',
         label: 'Hoạt động của các đơn vị',
-        path: '/c/hoat-dong-cua-cac-don-vi',
-        prefetchKey: ['articles', 'hoat-dong-cua-cac-don-vi']
+        path: `/c/${CATEGORY_SLUGS.DON_VI}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.DON_VI]
       }
     ]
   },
@@ -88,26 +92,26 @@ export const NAVIGATION_MENU: MenuItem[] = [
       {
         id: 'news-quoc-te',
         label: 'Tin quốc tế',
-        path: '/c/tin-quoc-te',
-        prefetchKey: ['articles', 'tin-quoc-te']
+        path: `/c/${CATEGORY_SLUGS.QUOC_TE}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.QUOC_TE]
       },
       {
         id: 'news-trong-nuoc',
         label: 'Tin trong nước',
-        path: '/c/tin-trong-nuoc',
-        prefetchKey: ['articles', 'tin-trong-nuoc']
+        path: `/c/${CATEGORY_SLUGS.TRONG_NUOC}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.TRONG_NUOC]
       },
       {
         id: 'news-quan-su',
         label: 'Tin quân sự',
-        path: '/c/tin-quan-su',
-        prefetchKey: ['articles', 'tin-quan-su']
+        path: `/c/${CATEGORY_SLUGS.QUAN_SU}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.QUAN_SU]
       },
       {
-        id: 'news-don-vi',
-        label: 'Tin đơn vị',
-        path: '/c/tin-don-vi',
-        prefetchKey: ['articles', 'tin-don-vi']
+        id: 'news-hoat-dong',
+        label: 'Tin hoạt động của Sư đoàn',
+        path: `/c/${CATEGORY_SLUGS.HOAT_DONG_SU_DOAN}`,
+        prefetchKey: ['articles', CATEGORY_SLUGS.HOAT_DONG_SU_DOAN]
       }
     ]
   },

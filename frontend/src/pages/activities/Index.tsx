@@ -6,14 +6,14 @@ import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Tabs, { Tab } from '../../components/common/Tabs';
 import Pagination from '../../components/common/Pagination';
 import ArticleCardLg from '../../components/cards/ArticleCardLg';
-import { useActivities } from '../../hooks/useApi';
+import { useArticles } from '../../hooks/useApi';
+import { ACTIVITIES_SLUGS, ACTIVITIES_NAMES } from '../../hooks/useActivities';
 import { getBreadcrumbs } from '../../config/navigation';
 
-const TABS: Tab[] = [
-  { id: 'hoat-dong-cua-thu-truong', label: 'Hoạt động của Thủ trưởng' },
-  { id: 'hoat-dong-cua-su-doan', label: 'Hoạt động của Sư đoàn' },
-  { id: 'hoat-dong-cua-cac-don-vi', label: 'Hoạt động của các đơn vị' }
-];
+const TABS: Tab[] = ACTIVITIES_SLUGS.map(slug => ({
+  id: slug,
+  label: ACTIVITIES_NAMES[slug]
+}));
 
 const ITEMS_PER_PAGE = 12;
 
@@ -26,10 +26,12 @@ export default function ActivitiesIndex() {
   // Get breadcrumbs from navigation config
   const breadcrumbs = getBreadcrumbs(location.pathname);
 
-  // Fetch articles for active tab category
-  const { data, isLoading, error } = useActivities({
+  // Fetch articles for active tab category with category_slug filter
+  const { data, isLoading, error } = useArticles({
+    category_slug: activeTab,
     page: currentPage,
     page_size: ITEMS_PER_PAGE,
+    sort: '-published_at'
   });
 
   const articles = (data as any)?.data || [];

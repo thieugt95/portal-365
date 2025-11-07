@@ -119,38 +119,44 @@ func (r *mediaItemRepository) List(ctx context.Context, mediaType, status string
 	          duration, width, height, uploaded_by, view_count, status, published_at, 
 	          created_at, updated_at FROM media_items WHERE 1=1`
 	countQuery := `SELECT COUNT(*) FROM media_items WHERE 1=1`
-	args := []interface{}{}
+
+	// Separate args for count and query
+	countArgs := []interface{}{}
+	queryArgs := []interface{}{}
 
 	if mediaType != "" {
 		query += " AND media_type = ?"
 		countQuery += " AND media_type = ?"
-		args = append(args, mediaType)
+		countArgs = append(countArgs, mediaType)
+		queryArgs = append(queryArgs, mediaType)
 	}
 
 	if status != "" {
 		query += " AND status = ?"
 		countQuery += " AND status = ?"
-		args = append(args, status)
+		countArgs = append(countArgs, status)
+		queryArgs = append(queryArgs, status)
 	}
 
 	if categoryID != nil {
 		query += " AND category_id = ?"
 		countQuery += " AND category_id = ?"
-		args = append(args, *categoryID)
+		countArgs = append(countArgs, *categoryID)
+		queryArgs = append(queryArgs, *categoryID)
 	}
 
 	// Get total count
 	var total int
-	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Get media items
 	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
-	args = append(args, pageSize, offset)
+	queryArgs = append(queryArgs, pageSize, offset)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

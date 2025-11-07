@@ -10,6 +10,7 @@ import ArticleCardLg from '../../components/cards/ArticleCardLg';
 import ArticleCardSm from '../../components/cards/ArticleCardSm';
 import { useArticles } from '../../hooks/useApi';
 import { getBreadcrumbs } from '../../config/navigation';
+import { NEWS_SLUGS, CATEGORY_NAMES } from '../../config/categorySlugs';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -23,19 +24,21 @@ export default function NewsIndex() {
   // Get breadcrumbs from navigation config
   const breadcrumbs = getBreadcrumbs(location.pathname);
 
-  // Build categories for filter
+  // Build categories for filter using centralized config
   const CATEGORIES = useMemo(() => [
     { id: 'all', name: 'Tất cả' },
-    { id: 'tin-quoc-te', name: 'Tin quốc tế' },
-    { id: 'tin-trong-nuoc', name: 'Tin trong nước' },
-    { id: 'tin-quan-su', name: 'Tin quân sự' },
-    { id: 'tin-don-vi', name: 'Tin đơn vị' }
+    ...NEWS_SLUGS.map(slug => ({
+      id: slug,
+      name: CATEGORY_NAMES[slug]
+    }))
   ], []);
 
   // Fetch articles based on selected category
   const { data, isLoading, error } = useArticles({
+    category_slug: selectedCategory === 'all' ? undefined : selectedCategory,
     page: currentPage,
     page_size: ITEMS_PER_PAGE,
+    sort: '-published_at'
   });
 
   // For "all" category, we'd need a different approach

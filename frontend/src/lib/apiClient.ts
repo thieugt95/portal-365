@@ -23,13 +23,48 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Public endpoints that don't require authentication
+const PUBLIC_ENDPOINTS = [
+  '/articles',
+  '/categories',
+  '/tags',
+  '/search',
+  '/pages',
+  '/banners',
+  '/settings',
+  '/menus',
+  '/introduction',
+  '/healthz',
+];
+
+const isPublicEndpoint = (url?: string): boolean => {
+  if (!url) return false;
+  return PUBLIC_ENDPOINTS.some(endpoint => url.includes(endpoint));
+};
+
 // Response interceptor for token refresh
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401) {
+      // If it's a public endpoint, just reject without logout
+      if (isPublicEndpoint(originalRequest.url)) {
+        console.log('[apiClient] 401 on public endpoint, ignoring:', originalRequest.url);
+        return Promise.reject(error);
+      }
+
+      // If already retried, logout
+      if (originalRequest._retry) {
+        console.log('[apiClient] Refresh failed, logging out');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
 
       try {
@@ -38,12 +73,14 @@ apiClient.interceptors.response.use(
           throw new Error('No refresh token');
         }
 
+        console.log('[apiClient] Attempting token refresh...');
         const response = await axios.post<SuccessResponse<LoginResponse>>(
           `${API_BASE_URL}/auth/refresh`,
           { refresh_token: refreshToken }
         );
 
         const { access_token, refresh_token: newRefreshToken } = response.data.data;
+        console.log('[apiClient] Token refresh successful');
         localStorage.setItem('access_token', access_token);
         localStorage.setItem('refresh_token', newRefreshToken);
 
@@ -53,6 +90,7 @@ apiClient.interceptors.response.use(
 
         return apiClient(originalRequest);
       } catch (refreshError) {
+        console.log('[apiClient] Token refresh failed, logging out');
         // Refresh failed, logout user
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
@@ -62,6 +100,7 @@ apiClient.interceptors.response.use(
       }
     }
 
+    // For non-401 errors (404, 500, etc.), just reject without logout
     return Promise.reject(error);
   }
 );

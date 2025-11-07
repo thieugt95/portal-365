@@ -151,6 +151,7 @@ func Setup(r *gin.Engine, cfg *config.Config, repos *database.Repositories) {
 				handler := handlers.NewDocumentsHandler(repos)
 				documents.GET("", handler.List)
 				documents.POST("", handler.Create)
+				documents.POST("/upload", handler.Upload)
 				documents.PUT("/:id", handler.Update)
 				documents.DELETE("/:id", handler.Delete)
 			}

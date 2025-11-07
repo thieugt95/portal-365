@@ -6,6 +6,10 @@ definitions:
         type: integer
       author_name:
         type: string
+      category:
+        allOf:
+        - $ref: '#/definitions/dto.CategoryResponse'
+        description: Full category object with parent info
       category_id:
         type: integer
       category_name:
@@ -31,14 +35,35 @@ definitions:
       summary:
         type: string
       tags:
+        description: Full tag objects
         items:
-          type: string
+          $ref: '#/definitions/dto.TagResponse'
         type: array
       title:
         type: string
       updated_at:
         type: string
       view_count:
+        type: integer
+    type: object
+  dto.CategoryResponse:
+    properties:
+      description:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      name:
+        type: string
+      parent_id:
+        type: integer
+      parent_slug:
+        description: Include parent slug for filtering
+        type: string
+      slug:
+        type: string
+      sort_order:
         type: integer
     type: object
   dto.CreateArticleRequest:
@@ -189,6 +214,15 @@ definitions:
       data: {}
       pagination:
         $ref: '#/definitions/dto.PaginationResponse'
+    type: object
+  dto.TagResponse:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      slug:
+        type: string
     type: object
   dto.UpdateArticleRequest:
     properties:
@@ -1069,6 +1103,49 @@ paths:
       summary: Upload media file
       tags:
       - Media
+  /admin/uploads:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload an image file (JPEG, PNG, WebP, GIF)
+      parameters:
+      - description: Image file (max 5MB)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  properties:
+                    url:
+                      type: string
+                  type: object
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload image for article content or featured image
+      tags:
+      - Upload
   /api/v1/activities:
     get:
       description: Get list of published activities with pagination
@@ -1976,6 +2053,68 @@ paths:
       security:
       - Bearer: []
       summary: Update document (Admin)
+      tags:
+      - documents
+  /api/v1/admin/documents/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a document file (PDF, DOC, DOCX, XLS, XLSX)
+      parameters:
+      - description: Document file (max 10MB)
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Document title
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Document description
+        in: formData
+        name: description
+        type: string
+      - description: Category ID
+        in: formData
+        name: category_id
+        required: true
+        type: integer
+      - description: Document number
+        in: formData
+        name: document_no
+        type: string
+      - description: Issued date (RFC3339)
+        in: formData
+        name: issued_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/dto.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Document'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Upload document file
       tags:
       - documents
   /api/v1/admin/pages:

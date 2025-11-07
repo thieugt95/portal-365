@@ -45,6 +45,12 @@ func main() {
 
 	if err := repos.Users.Create(ctx, adminUser); err != nil {
 		log.Printf("Admin user might already exist: %v", err)
+		// Fetch existing user
+		existingUser, err := repos.Users.GetByEmail(ctx, "admin@portal365.com")
+		if err == nil && existingUser != nil {
+			adminUser = existingUser
+			log.Printf("Using existing admin user with ID: %d", adminUser.ID)
+		}
 	} else {
 		log.Printf("Created admin user with ID: %d", adminUser.ID)
 
@@ -54,6 +60,11 @@ func main() {
 			repos.Users.AssignRole(ctx, adminUser.ID, adminRole.ID)
 			log.Printf("Assigned Admin role to user")
 		}
+	}
+
+	// Ensure we have a valid admin user ID
+	if adminUser.ID == 0 {
+		log.Fatal("Failed to get admin user ID")
 	}
 
 	// Create main categories with hierarchy
@@ -295,6 +306,192 @@ func main() {
 		} else {
 			log.Printf("Created page: %s", page.Title)
 		}
+	}
+
+	// Seed documents - need to get category IDs first
+	// Get "Công văn" category ID, or fallback to "Kho Văn bản"
+	congVanCat, _ := repos.Categories.GetBySlug(ctx, "cong-van")
+	khoVanBanCat, _ := repos.Categories.GetBySlug(ctx, "kho-van-ban")
+
+	var docCategoryID int64
+	if congVanCat != nil {
+		docCategoryID = congVanCat.ID
+		log.Printf("Found 'Công văn' category with ID: %d", docCategoryID)
+	} else if khoVanBanCat != nil {
+		docCategoryID = khoVanBanCat.ID
+		log.Printf("Found 'Kho Văn bản' category with ID: %d", docCategoryID)
+	} else {
+		log.Printf("Warning: Could not find category for documents, skipping document seed")
+	}
+
+	if docCategoryID > 0 {
+		documents := []models.Document{
+			{
+				Title:       "Nghị định 100/2019/NĐ-CP",
+				Slug:        "nghi-dinh-100-2019-nd-cp",
+				Description: "Về xử phạt hành chính trong lĩnh vực giao thông đường bộ và đường sắt",
+				CategoryID:  docCategoryID,
+				FileURL:     "/static/uploads/documents/nghi-dinh-100.pdf",
+				FileName:    "nghi-dinh-100.pdf",
+				FileSize:    1024000,
+				FileType:    "application/pdf",
+				DocumentNo:  "100/2019/NĐ-CP",
+				UploadedBy:  adminUser.ID,
+				ViewCount:   0,
+				Status:      "published",
+			},
+			{
+				Title:       "Thông tư 01/2020/TT-BQP",
+				Slug:        "thong-tu-01-2020-tt-bqp",
+				Description: "Quy định về công tác huấn luyện",
+				CategoryID:  docCategoryID,
+				FileURL:     "/static/uploads/documents/thong-tu-01.pdf",
+				FileName:    "thong-tu-01.pdf",
+				FileSize:    512000,
+				FileType:    "application/pdf",
+				DocumentNo:  "01/2020/TT-BQP",
+				UploadedBy:  adminUser.ID,
+				ViewCount:   0,
+				Status:      "published",
+			},
+			{
+				Title:       "Kế hoạch công tác năm 2025",
+				Slug:        "ke-hoach-cong-tac-nam-2025",
+				Description: "Kế hoạch công tác toàn đơn vị năm 2025",
+				CategoryID:  docCategoryID,
+				FileURL:     "/static/uploads/documents/ke-hoach-2025.docx",
+				FileName:    "ke-hoach-2025.docx",
+				FileSize:    256000,
+				FileType:    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+				DocumentNo:  "KH/01-2025",
+				UploadedBy:  adminUser.ID,
+				ViewCount:   0,
+				Status:      "published",
+			},
+		}
+
+		log.Printf("Attempting to create %d documents...", len(documents))
+		for _, doc := range documents {
+			d := doc
+			log.Printf("Creating document: %s (CategoryID: %d)", d.Slug, d.CategoryID)
+			if err := repos.Documents.Create(ctx, &d); err != nil {
+				log.Printf("Document %s might already exist: %v", doc.Slug, err)
+			} else {
+				log.Printf("Created document: %s", doc.Title)
+			}
+		}
+	} else {
+		log.Printf("Warning: Could not find category for documents, skipping document seed")
+	}
+
+	// Seed media items - need to get category IDs first
+	// Get "Thư viện ảnh" and "Thư viện video" category IDs
+	thuVienAnhCat, _ := repos.Categories.GetBySlug(ctx, "thu-vien-anh")
+	thuVienVideoCat, _ := repos.Categories.GetBySlug(ctx, "thu-vien-video")
+	mediaCat, _ := repos.Categories.GetBySlug(ctx, "media")
+
+	var imageCategoryID, videoCategoryID int64
+	if thuVienAnhCat != nil {
+		imageCategoryID = thuVienAnhCat.ID
+	} else if mediaCat != nil {
+		imageCategoryID = mediaCat.ID
+	}
+
+	if thuVienVideoCat != nil {
+		videoCategoryID = thuVienVideoCat.ID
+	} else if mediaCat != nil {
+		videoCategoryID = mediaCat.ID
+	} else {
+		videoCategoryID = imageCategoryID
+	}
+
+	if imageCategoryID > 0 {
+		mediaItems := []models.MediaItem{
+			{
+				Title:        "Lễ xuất quân đầu năm 2025",
+				Slug:         "le-xuat-quan-dau-nam-2025",
+				Description:  "Hình ảnh lễ xuất quân thực hiện nhiệm vụ năm 2025",
+				CategoryID:   imageCategoryID,
+				URL:          "/static/uploads/media/xuat-quan-2025.jpg",
+				ThumbnailURL: "/static/uploads/media/thumbs/xuat-quan-2025.jpg",
+				MediaType:    "image",
+				FileSize:     2048000,
+				Width:        1920,
+				Height:       1080,
+				UploadedBy:   adminUser.ID,
+				ViewCount:    0,
+				Status:       "published",
+			},
+			{
+				Title:        "Diễn tập chiến thuật cấp đại đội",
+				Slug:         "dien-tap-chien-thuat-cap-dai-doi",
+				Description:  "Hoạt động diễn tập chiến thuật của các đại đội",
+				CategoryID:   imageCategoryID,
+				URL:          "/static/uploads/media/dien-tap.jpg",
+				ThumbnailURL: "/static/uploads/media/thumbs/dien-tap.jpg",
+				MediaType:    "image",
+				FileSize:     1536000,
+				Width:        1920,
+				Height:       1080,
+				UploadedBy:   adminUser.ID,
+				ViewCount:    0,
+				Status:       "published",
+			},
+			{
+				Title:        "Huấn luyện bắn đạn thật",
+				Slug:         "huan-luyen-ban-dan-that",
+				Description:  "Hình ảnh huấn luyện bắn đạn thật năm 2025",
+				CategoryID:   imageCategoryID,
+				URL:          "/static/uploads/media/ban-dan-that.jpg",
+				ThumbnailURL: "/static/uploads/media/thumbs/ban-dan-that.jpg",
+				MediaType:    "image",
+				FileSize:     1792000,
+				Width:        1920,
+				Height:       1080,
+				UploadedBy:   adminUser.ID,
+				ViewCount:    0,
+				Status:       "published",
+			},
+			{
+				Title:        "Clip xuất quân năm 2025",
+				Slug:         "clip-xuat-quan-nam-2025",
+				Description:  "Video clip lễ xuất quân thực hiện nhiệm vụ",
+				CategoryID:   videoCategoryID,
+				URL:          "/static/uploads/media/xuat-quan-2025.mp4",
+				ThumbnailURL: "/static/uploads/media/thumbs/xuat-quan-2025-thumb.jpg",
+				MediaType:    "video",
+				FileSize:     15360000,
+				Duration:     125,
+				UploadedBy:   adminUser.ID,
+				ViewCount:    0,
+				Status:       "published",
+			},
+			{
+				Title:        "Diễn tập thực binh",
+				Slug:         "dien-tap-thuc-binh",
+				Description:  "Video diễn tập thực binh toàn Sư đoàn",
+				CategoryID:   videoCategoryID,
+				URL:          "/static/uploads/media/dien-tap-thuc-binh.mp4",
+				ThumbnailURL: "/static/uploads/media/thumbs/dien-tap-thuc-binh-thumb.jpg",
+				MediaType:    "video",
+				FileSize:     28672000,
+				Duration:     256,
+				UploadedBy:   adminUser.ID,
+				ViewCount:    0,
+				Status:       "published",
+			},
+		}
+
+		for _, media := range mediaItems {
+			m := media
+			if err := repos.MediaItems.Create(ctx, &m); err != nil {
+				log.Printf("Media item %s might already exist: %v", media.Slug, err)
+			} else {
+				log.Printf("Created media item: %s (%s)", media.Title, media.MediaType)
+			}
+		}
+	} else {
+		log.Printf("Warning: Could not find category for media, skipping media seed")
 	}
 
 	// Create settings for home sections

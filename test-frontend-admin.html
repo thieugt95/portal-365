@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Frontend Admin Pages</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .output {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .info {
+            color: #2196F3;
+        }
+        input[type="text"], input[type="password"] {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.running {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+        .status.success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        .status.failed {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Frontend Admin Pages - Portal 365</h1>
+    
+    <div class="container">
+        <h2>📋 Hướng dẫn</h2>
+        <ol>
+            <li>Đảm bảo Backend chạy ở <code>http://localhost:8080</code></li>
+            <li>Đảm bảo Frontend chạy ở <code>http://localhost:5173</code></li>
+            <li>Nhấn "Check Backend Status" để kiểm tra backend</li>
+            <li>Nhấn "Test Login API" để đăng nhập và lưu token</li>
+            <li>Nhấn các nút test để kiểm tra từng API</li>
+            <li>Nhấn "Open Admin Pages" để mở trang admin trong tab mới</li>
+            <li>Kiểm tra Console (F12) trên trang admin để xem debug logs</li>
+        </ol>
+    </div>
+
+    <div class="container">
+        <h2>🔌 Backend Status</h2>
+        <button onclick="checkBackend()">Check Backend Status</button>
+        <div id="backendStatus"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔐 Authentication</h2>
+        <div>
+            <input type="text" id="email" value="admin@portal365.com" placeholder="Email">
+            <input type="password" id="password" value="admin123" placeholder="Password">
+            <button onclick="testLogin()">Test Login API</button>
+            <button onclick="checkLocalStorage()">Check LocalStorage</button>
+        </div>
+        <div id="authOutput" class="output"></div>
+    </div>
+
+    <div class="container">
+        <h2>📄 Admin Documents API</h2>
+        <button onclick="testAdminDocuments()">Test GET /admin/documents</button>
+        <button onclick="testDocumentsDetail()">Test Document Detail</button>
+        <div id="documentsOutput" class="output"></div>
+    </div>
+
+    <div class="container">
+        <h2>🖼️ Admin Media API</h2>
+        <button onclick="testAdminImages()">Test GET /admin/media (Images)</button>
+        <button onclick="testAdminVideos()">Test GET /admin/media (Videos)</button>
+        <div id="mediaOutput" class="output"></div>
+    </div>
+
+    <div class="container">
+        <h2>🌐 Open Frontend Admin Pages</h2>
+        <p class="info">Các nút dưới đây sẽ mở trang admin trong tab mới. Kiểm tra Console (F12) để xem debug logs.</p>
+        <button onclick="openAdminDocs()">Open /admin/docs</button>
+        <button onclick="openAdminMedia()">Open /admin/media</button>
+        <button onclick="openAdminLogin()">Open /login</button>
+        <button onclick="openAdminDashboard()">Open /admin</button>
+    </div>
+
+    <div class="container">
+        <h2>💡 Console Commands</h2>
+        <p>Mở Console (F12) trên trang admin và chạy các lệnh sau:</p>
+        <div class="output">
+// Kiểm tra token
+localStorage.getItem('accessToken')
+
+// Kiểm tra user
+JSON.parse(localStorage.getItem('user') || '{}')
+
+// Test API trực tiếp từ console
+const token = localStorage.getItem('accessToken');
+fetch('http://localhost:8080/api/v1/admin/documents', {
+  headers: { 'Authorization': `Bearer ${token}` }
+})
+.then(r => r.json())
+.then(d => console.log('Documents:', d));
+
+// Test media API
+fetch('http://localhost:8080/api/v1/admin/media?media_type=image', {
+  headers: { 'Authorization': `Bearer ${token}` }
+})
+.then(r => r.json())
+.then(d => console.log('Media:', d));
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api/v1';
+        const FRONTEND_BASE = 'http://localhost:5173';
+
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        function clearLog(elementId) {
+            document.getElementById(elementId).innerHTML = '';
+        }
+
+        async function checkBackend() {
+            const statusDiv = document.getElementById('backendStatus');
+            statusDiv.innerHTML = '<div class="status running">⏳ Đang kiểm tra backend...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/healthz`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Backend đang chạy<br>
+                            Status: ${data.status}<br>
+                            Time: ${data.timestamp}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<div class="status failed">❌ Backend response không ok</div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="status failed">
+                        ❌ Không thể kết nối đến backend<br>
+                        Error: ${error.message}<br>
+                        <strong>Hãy chạy backend trước:</strong><br>
+                        <code>cd backend && go run ./cmd/server</code>
+                    </div>
+                `;
+            }
+        }
+
+        async function testLogin() {
+            clearLog('authOutput');
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            log('authOutput', `🔄 Đang đăng nhập với ${email}...`);
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.data) {
+                    const token = data.data.access_token;
+                    const user = data.data.user;
+                    
+                    // Lưu vào localStorage giống như frontend app
+                    localStorage.setItem('accessToken', token);
+                    localStorage.setItem('user', JSON.stringify(user));
+                    localStorage.setItem('refreshToken', data.data.refresh_token || '');
+
+                    log('authOutput', '✅ Đăng nhập thành công!', 'success');
+                    log('authOutput', `User: ${user.username} (${user.email})`);
+                    log('authOutput', `Roles: ${user.roles?.join(', ')}`);
+                    log('authOutput', `Token: ${token.substring(0, 50)}...`);
+                    log('authOutput', '💾 Token đã được lưu vào localStorage');
+                } else {
+                    log('authOutput', `❌ Đăng nhập thất bại: ${data.error?.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                log('authOutput', `❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        function checkLocalStorage() {
+            clearLog('authOutput');
+            const token = localStorage.getItem('accessToken');
+            const user = localStorage.getItem('user');
+            const refreshToken = localStorage.getItem('refreshToken');
+
+            if (token) {
+                log('authOutput', '✅ Access Token tồn tại', 'success');
+                log('authOutput', `Token: ${token.substring(0, 50)}...`);
+                
+                // Decode JWT để xem expiry
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    const exp = new Date(payload.exp * 1000);
+                    const now = new Date();
+                    const isExpired = exp < now;
+                    
+                    log('authOutput', `Expires: ${exp.toLocaleString()}`);
+                    log('authOutput', isExpired ? '⚠️ Token đã hết hạn!' : '✅ Token còn hiệu lực', isExpired ? 'error' : 'success');
+                } catch (e) {
+                    log('authOutput', '⚠️ Không thể decode token', 'error');
+                }
+            } else {
+                log('authOutput', '❌ Không tìm thấy Access Token', 'error');
+                log('authOutput', '💡 Nhấn "Test Login API" để đăng nhập');
+            }
+
+            if (user) {
+                log('authOutput', '✅ User data tồn tại', 'success');
+                log('authOutput', `User: ${user}`);
+            } else {
+                log('authOutput', '❌ Không tìm thấy User data', 'error');
+            }
+
+            if (refreshToken) {
+                log('authOutput', '✅ Refresh Token tồn tại', 'success');
+            }
+        }
+
+        async function testAdminDocuments() {
+            clearLog('documentsOutput');
+            const token = localStorage.getItem('accessToken');
+
+            if (!token) {
+                log('documentsOutput', '❌ Không tìm thấy token. Hãy đăng nhập trước.', 'error');
+                return;
+            }
+
+            log('documentsOutput', '🔄 Đang lấy danh sách documents...');
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/documents?page=1&page_size=20`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    log('documentsOutput', `✅ Thành công! Nhận được ${data.data?.length || 0} documents`, 'success');
+                    log('documentsOutput', `Pagination: Page ${data.pagination?.page}/${data.pagination?.total_pages}, Total: ${data.pagination?.total}`);
+                    
+                    if (data.data && data.data.length > 0) {
+                        log('documentsOutput', '\n📄 Documents:');
+                        data.data.forEach((doc, i) => {
+                            log('documentsOutput', `${i + 1}. ${doc.title} (${doc.status})`);
+                            log('documentsOutput', `   File: ${doc.file_path}`);
+                        });
+                    }
+                    
+                    log('documentsOutput', '\n📦 Raw Response:');
+                    log('documentsOutput', JSON.stringify(data, null, 2));
+                } else {
+                    log('documentsOutput', `❌ Error ${response.status}: ${data.error?.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                log('documentsOutput', `❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function testDocumentsDetail() {
+            clearLog('documentsOutput');
+            const token = localStorage.getItem('accessToken');
+
+            if (!token) {
+                log('documentsOutput', '❌ Không tìm thấy token. Hãy đăng nhập trước.', 'error');
+                return;
+            }
+
+            // First get list to get an ID
+            try {
+                const listResponse = await fetch(`${API_BASE}/admin/documents?page=1&page_size=1`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const listData = await listResponse.json();
+                
+                if (listData.data && listData.data.length > 0) {
+                    const docId = listData.data[0].id;
+                    log('documentsOutput', `🔄 Đang lấy chi tiết document ID: ${docId}`);
+                    
+                    const response = await fetch(`${API_BASE}/admin/documents/${docId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        log('documentsOutput', '✅ Thành công!', 'success');
+                        log('documentsOutput', JSON.stringify(data, null, 2));
+                    } else {
+                        log('documentsOutput', `❌ Error: ${data.error?.message}`, 'error');
+                    }
+                } else {
+                    log('documentsOutput', '⚠️ Không có document nào', 'error');
+                }
+            } catch (error) {
+                log('documentsOutput', `❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function testAdminImages() {
+            clearLog('mediaOutput');
+            const token = localStorage.getItem('accessToken');
+
+            if (!token) {
+                log('mediaOutput', '❌ Không tìm thấy token. Hãy đăng nhập trước.', 'error');
+                return;
+            }
+
+            log('mediaOutput', '🔄 Đang lấy danh sách images...');
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/media?media_type=image&page=1&page_size=24`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    log('mediaOutput', `✅ Thành công! Nhận được ${data.data?.length || 0} images`, 'success');
+                    log('mediaOutput', `Pagination: Page ${data.pagination?.page}/${data.pagination?.total_pages}, Total: ${data.pagination?.total}`);
+                    
+                    if (data.data && data.data.length > 0) {
+                        log('mediaOutput', '\n🖼️ Images:');
+                        data.data.forEach((item, i) => {
+                            log('mediaOutput', `${i + 1}. ${item.title} (${item.status})`);
+                            log('mediaOutput', `   File: ${item.file_path}`);
+                        });
+                    }
+                    
+                    log('mediaOutput', '\n📦 Raw Response:');
+                    log('mediaOutput', JSON.stringify(data, null, 2));
+                } else {
+                    log('mediaOutput', `❌ Error ${response.status}: ${data.error?.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                log('mediaOutput', `❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function testAdminVideos() {
+            clearLog('mediaOutput');
+            const token = localStorage.getItem('accessToken');
+
+            if (!token) {
+                log('mediaOutput', '❌ Không tìm thấy token. Hãy đăng nhập trước.', 'error');
+                return;
+            }
+
+            log('mediaOutput', '🔄 Đang lấy danh sách videos...');
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/media?media_type=video&page=1&page_size=24`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    log('mediaOutput', `✅ Thành công! Nhận được ${data.data?.length || 0} videos`, 'success');
+                    log('mediaOutput', `Pagination: Page ${data.pagination?.page}/${data.pagination?.total_pages}, Total: ${data.pagination?.total}`);
+                    
+                    if (data.data && data.data.length > 0) {
+                        log('mediaOutput', '\n🎥 Videos:');
+                        data.data.forEach((item, i) => {
+                            log('mediaOutput', `${i + 1}. ${item.title} (${item.status})`);
+                            log('mediaOutput', `   File: ${item.file_path}`);
+                        });
+                    }
+                    
+                    log('mediaOutput', '\n📦 Raw Response:');
+                    log('mediaOutput', JSON.stringify(data, null, 2));
+                } else {
+                    log('mediaOutput', `❌ Error ${response.status}: ${data.error?.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                log('mediaOutput', `❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        function openAdminDocs() {
+            window.open(`${FRONTEND_BASE}/admin/docs`, '_blank');
+            alert('Đã mở /admin/docs trong tab mới.\n\nHãy:\n1. Mở Console (F12)\n2. Xem debug logs: "Admin Documents Debug:"\n3. Kiểm tra có lỗi gì không\n4. Xem Network tab để check API calls');
+        }
+
+        function openAdminMedia() {
+            window.open(`${FRONTEND_BASE}/admin/media`, '_blank');
+            alert('Đã mở /admin/media trong tab mới.\n\nHãy:\n1. Mở Console (F12)\n2. Xem debug logs: "Admin Media Debug:"\n3. Kiểm tra có lỗi gì không\n4. Xem Network tab để check API calls');
+        }
+
+        function openAdminLogin() {
+            window.open(`${FRONTEND_BASE}/login`, '_blank');
+            alert('Đã mở /login trong tab mới.\n\nHãy đăng nhập với:\nEmail: admin@portal365.com\nPassword: admin123');
+        }
+
+        function openAdminDashboard() {
+            window.open(`${FRONTEND_BASE}/admin`, '_blank');
+        }
+
+        // Auto check backend on load
+        window.addEventListener('load', () => {
+            checkBackend();
+            checkLocalStorage();
+        });
+    </script>
+</body>
+</html>

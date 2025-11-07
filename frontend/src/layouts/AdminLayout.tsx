@@ -102,6 +102,15 @@ export const AdminLayout = () => {
         {/* Sidebar */}
         <aside className="w-64 bg-white shadow-sm min-h-[calc(100vh-64px)] sticky top-16">
           <nav className="p-4">
+            {/* Back to Home Button */}
+            <Link
+              to="/"
+              className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg bg-gradient-to-r from-green-600 to-green-700 text-white font-medium hover:from-green-700 hover:to-green-800 transition-all shadow-md hover:shadow-lg"
+            >
+              <span className="text-xl">←</span>
+              <span>Quay lại Trang chủ</span>
+            </Link>
+
             <ul className="space-y-1">
               {menuItems.map((item) => (
                 <li key={item.path}>

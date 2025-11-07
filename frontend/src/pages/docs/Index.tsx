@@ -1,74 +1,64 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, FileText } from 'lucide-react';
+import { Search, FileText, Download, Eye, Calendar } from 'lucide-react';
 import Header from '../../components/Header';
 import DynamicNavbar from '../../components/DynamicNavbar';
 import SiteFooter from '../../components/layout/SiteFooter';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Pagination from '../../components/common/Pagination';
-import DocCard from '../../components/cards/DocCard';
 import Modal from '../../components/common/Modal';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { getBreadcrumbs } from '../../config/navigation';
+import { useDocuments } from '../../hooks/useApi';
 
-// Dummy documents data
-const DUMMY_DOCS = [
-  {
-    id: 1,
-    title: 'Quyết định số 01/2025 về công tác huấn luyện',
-    description: 'Quy định chi tiết về kế hoạch huấn luyện năm 2025',
-    file_type: 'PDF',
-    file_size: 2457600,
-    year: 2025,
-    category: 'Quyết định',
-    download_url: '/files/qd-01-2025.pdf',
-    preview_url: '/files/qd-01-2025.pdf',
-    published_at: '2025-01-15T09:00:00Z'
-  },
-  {
-    id: 2,
-    title: 'Thông tư 02/2025 về chế độ công tác phí',
-    description: 'Hướng dẫn thực hiện chế độ công tác phí mới',
-    file_type: 'DOCX',
-    file_size: 1234567,
-    year: 2025,
-    category: 'Thông tư',
-    download_url: '/files/tt-02-2025.docx',
-    published_at: '2025-01-14T10:00:00Z'
-  }
-];
-
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 12;
 
 export default function DocsIndex() {
   const location = useLocation();
   const [searchQuery, setLocalSearch] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [previewDoc, setPreviewDoc] = useState<typeof DUMMY_DOCS[0] | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
+
+  // Fetch documents from API
+  const { data, isLoading, error } = useDocuments({ 
+    page: currentPage, 
+    page_size: ITEMS_PER_PAGE 
+  });
+
+  const documents = data?.data || [];
+  const pagination = data?.pagination || { page: 1, page_size: ITEMS_PER_PAGE, total: 0, total_pages: 1 };
 
   // Get breadcrumbs from navigation config
   const breadcrumbs = getBreadcrumbs(location.pathname);
 
   // Filter documents
-  let filteredDocs = DUMMY_DOCS;
-  
-  if (selectedType !== 'all') {
-    filteredDocs = filteredDocs.filter(d => d.file_type.toLowerCase() === selectedType.toLowerCase());
-  }
+  const filteredDocs = documents.filter((doc: any) => {
+    const matchesSearch = !searchQuery || 
+      doc.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesType = selectedType === 'all' || 
+      doc.file_type?.toLowerCase().includes(selectedType.toLowerCase());
+    
+    return matchesSearch && matchesType;
+  });
 
-  if (searchQuery) {
-    filteredDocs = filteredDocs.filter(d => 
-      d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (d.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
 
-  // Pagination
-  const totalPages = Math.ceil(filteredDocs.length / ITEMS_PER_PAGE);
-  const paginatedDocs = filteredDocs.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+  const getFileIcon = (type: string) => {
+    if (!type) return '📁';
+    if (type.toLowerCase().includes('pdf')) return '📄';
+    if (type.toLowerCase().includes('word') || type.toLowerCase().includes('doc')) return '📝';
+    if (type.toLowerCase().includes('excel') || type.toLowerCase().includes('xls')) return '📊';
+    return '📁';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -82,7 +72,7 @@ export default function DocsIndex() {
             Kho văn bản
           </h1>
           <p className="text-gray-600">
-            Tìm kiếm và tải về các văn bản, quyết định, thông tư
+            Tìm kiếm và tải về các văn bản, quyết định, thông tư ({pagination.total} văn bản)
           </p>
         </div>
 
@@ -113,22 +103,76 @@ export default function DocsIndex() {
         </div>
 
         {/* Documents List */}
-        {paginatedDocs.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12">
+            <LoadingSpinner />
+            <p className="text-gray-600 mt-4">Đang tải văn bản...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <FileText className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <p className="text-red-600">Không thể tải dữ liệu. Vui lòng thử lại.</p>
+          </div>
+        ) : filteredDocs.length > 0 ? (
           <>
             <div className="space-y-4 mb-8">
-              {paginatedDocs.map((doc) => (
-                <DocCard
-                  key={doc.id}
-                  doc={doc}
-                  onView={() => setPreviewDoc(doc)}
-                />
+              {filteredDocs.map((doc: any) => (
+                <div key={doc.id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="text-4xl">{getFileIcon(doc.file_type)}</div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {doc.title}
+                      </h3>
+                      {doc.description && (
+                        <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                          {doc.description}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <FileText className="w-4 h-4" />
+                          {doc.file_type || 'N/A'}
+                        </span>
+                        <span>{formatFileSize(doc.file_size)}</span>
+                        {doc.published_at && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-4 h-4" />
+                            {new Date(doc.published_at).toLocaleDateString('vi-VN')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {doc.file_url && (
+                        <>
+                          <button
+                            onClick={() => setPreviewDoc(doc)}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Xem trước"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                          <a
+                            href={doc.file_url}
+                            download
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Tải về"
+                          >
+                            <Download className="w-5 h-5" />
+                          </a>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
 
-            {totalPages > 1 && (
+            {pagination.total_pages > 1 && (
               <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
+                currentPage={pagination.page}
+                totalPages={pagination.total_pages}
                 onPageChange={setCurrentPage}
               />
             )}
@@ -136,24 +180,42 @@ export default function DocsIndex() {
         ) : (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">Không tìm thấy văn bản nào</p>
+            <p className="text-gray-500">
+              {searchQuery || selectedType !== 'all' 
+                ? 'Không tìm thấy văn bản phù hợp' 
+                : 'Chưa có văn bản nào'}
+            </p>
           </div>
         )}
       </main>
 
       {/* PDF Preview Modal */}
-      {previewDoc && (
+      {previewDoc && previewDoc.file_url && (
         <Modal
           isOpen={true}
           onClose={() => setPreviewDoc(null)}
           title={previewDoc.title}
         >
           <div className="w-full h-[80vh]">
-            <iframe
-              src={previewDoc.preview_url}
-              className="w-full h-full border-0"
-              title={previewDoc.title}
-            />
+            {previewDoc.file_url.toLowerCase().endsWith('.pdf') ? (
+              <iframe
+                src={previewDoc.file_url}
+                className="w-full h-full border-0"
+                title={previewDoc.title}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full">
+                <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                <p className="text-gray-600 mb-4">Không thể xem trước file này</p>
+                <a
+                  href={previewDoc.file_url}
+                  download
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Tải về
+                </a>
+              </div>
+            )}
           </div>
         </Modal>
       )}

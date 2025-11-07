@@ -1,85 +1,92 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Upload, Video, Image as ImageIcon, Trash2, Edit, Eye, Play } from 'lucide-react';
+import { Upload, Video, Image as ImageIcon, Trash2, Eye, Play } from 'lucide-react';
 import AdminLayout from '../../../components/admin/AdminLayout';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import { useMediaItems, useUploadMedia, useDeleteMedia } from '../../../hooks/useApi';
 
-type MediaTab = 'videos' | 'albums';
+type MediaTab = 'images' | 'videos';
 
 interface MediaItem {
   id: number;
-  type: 'image' | 'video';
+  media_type: 'image' | 'video';
   title: string;
   url: string;
   thumbnail_url?: string;
-  caption?: string;
+  description?: string;
   width?: number;
   height?: number;
-  size: number;
-  created_at: string;
-}
-
-interface Album {
-  id: number;
-  slug: string;
-  title: string;
-  description?: string;
-  cover_media_id?: number;
-  cover_url?: string;
-  photo_count: number;
+  file_size: number;
   created_at: string;
 }
 
 export default function MediaList() {
-  const [activeTab, setActiveTab] = useState<MediaTab>('videos');
-  const [isUploading, setIsUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState<MediaTab>('images');
   const [page, setPage] = useState(1);
 
-  // TODO: Replace with actual API calls
-  const isLoading = false;
-  const error = null;
-  const videos: MediaItem[] = [];
-  const albums: Album[] = [];
+  // Fetch media items from API
+  const { data, isLoading, error } = useMediaItems({ 
+    page, 
+    page_size: 24,
+    type: activeTab === 'images' ? 'image' : 'video'
+  });
+  const uploadMutation = useUploadMedia();
+  const deleteMutation = useDeleteMedia();
 
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const mediaItems: MediaItem[] = data?.data || [];
+  const pagination = data?.pagination || { page: 1, page_size: 24, total: 0, total_pages: 0 };
+
+  // Debug logging
+  console.log('Admin Media Debug:', {
+    activeTab,
+    isLoading,
+    error,
+    dataReceived: !!data,
+    mediaItemsCount: mediaItems.length,
+    pagination,
+    rawData: data
+  });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+    const isImage = activeTab === 'images';
+    const allowedTypes = isImage 
+      ? ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+      : ['video/mp4', 'video/webm', 'video/ogg'];
+    
     if (!allowedTypes.includes(file.type)) {
-      alert('Chỉ hỗ trợ video MP4, WebM, OGG');
+      alert(isImage ? 'Chỉ hỗ trợ ảnh JPG, PNG, WebP, GIF' : 'Chỉ hỗ trợ video MP4, WebM, OGG');
       return;
     }
 
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    const maxSize = isImage ? 5 * 1024 * 1024 : 100 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('Video không được vượt quá 100MB');
+      alert(isImage ? 'Ảnh không được vượt quá 5MB' : 'Video không được vượt quá 100MB');
       return;
     }
 
-    setIsUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('type', 'video');
-      formData.append('title', file.name);
+      formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
       
-      // TODO: Implement upload API call
-      console.log('Uploading video:', file.name);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      await uploadMutation.mutateAsync(formData);
       alert('Upload thành công!');
-    } catch (err) {
-      alert('Upload thất bại');
-    } finally {
-      setIsUploading(false);
+      e.target.value = '';
+    } catch (err: any) {
+      alert(err.message || 'Upload thất bại');
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm(`Xóa ${activeTab === 'videos' ? 'video' : 'album'} này?`)) return;
-    // TODO: Implement delete
-    console.log('Delete', id);
+    if (!confirm(`Xóa ${activeTab === 'images' ? 'ảnh' : 'video'} này?`)) return;
+    try {
+      await deleteMutation.mutateAsync(id);
+      alert('Xóa thành công!');
+    } catch (err: any) {
+      alert(err.message || 'Xóa thất bại');
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -97,34 +104,38 @@ export default function MediaList() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Thư viện Media</h1>
-            <p className="text-gray-600 mt-1">Quản lý video và album ảnh</p>
+            <p className="text-gray-600 mt-1">Quản lý ảnh và video</p>
           </div>
-          {activeTab === 'videos' ? (
-            <label className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer">
-              <Upload className="w-5 h-5" />
-              {isUploading ? 'Đang tải lên...' : 'Upload video'}
-              <input
-                type="file"
-                accept="video/*"
-                onChange={handleVideoUpload}
-                disabled={isUploading}
-                className="hidden"
-              />
-            </label>
-          ) : (
-            <Link
-              to="/admin/media/albums/create"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <ImageIcon className="w-5 h-5" />
-              Tạo album mới
-            </Link>
-          )}
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            <Upload className="w-5 h-5" />
+            {uploadMutation.isPending ? 'Đang tải lên...' : `Upload ${activeTab === 'images' ? 'ảnh' : 'video'}`}
+            <input
+              type="file"
+              accept={activeTab === 'images' ? 'image/*' : 'video/*'}
+              onChange={handleFileUpload}
+              disabled={uploadMutation.isPending}
+              className="hidden"
+            />
+          </label>
         </div>
 
         {/* Tabs */}
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => {
+                setActiveTab('images');
+                setPage(1);
+              }}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2 ${
+                activeTab === 'images'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <ImageIcon className="w-5 h-5" />
+              Ảnh ({pagination.total})
+            </button>
             <button
               onClick={() => {
                 setActiveTab('videos');
@@ -137,37 +148,24 @@ export default function MediaList() {
               }`}
             >
               <Video className="w-5 h-5" />
-              Videos
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('albums');
-                setPage(1);
-              }}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2 ${
-                activeTab === 'albums'
-                  ? 'border-green-600 text-green-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <ImageIcon className="w-5 h-5" />
-              Albums
+              Videos ({pagination.total})
             </button>
           </nav>
         </div>
 
         {/* Content */}
-        {activeTab === 'videos' ? (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            {isLoading ? (
-              <div className="p-8 text-center">
-                <LoadingSpinner />
-              </div>
-            ) : error ? (
-              <div className="p-8 text-center text-red-600">
-                Không thể tải dữ liệu. Vui lòng thử lại.
-              </div>
-            ) : videos.length === 0 ? (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {isLoading ? (
+            <div className="p-8 text-center">
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div className="p-8 text-center text-red-600">
+              Không thể tải dữ liệu. Vui lòng thử lại.
+            </div>
+          ) : activeTab === 'videos' ? (
+            // Videos Tab
+            mediaItems.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Video className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <p className="mb-2">Chưa có video nào</p>
@@ -175,12 +173,12 @@ export default function MediaList() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-                {videos.map((video) => (
+                {mediaItems.map((video) => (
                   <div key={video.id} className="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
                     <div className="relative aspect-video bg-gray-900">
                       {video.thumbnail_url ? (
                         <img
-                          src={video.thumbnail_url}
+                          src={`http://localhost:8080${video.thumbnail_url}`}
                           alt={video.title}
                           className="w-full h-full object-cover"
                         />
@@ -191,7 +189,7 @@ export default function MediaList() {
                       )}
                       <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all flex items-center justify-center">
                         <a
-                          href={video.url}
+                          href={`http://localhost:8080${video.url}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="opacity-0 hover:opacity-100 transition-opacity"
@@ -202,101 +200,27 @@ export default function MediaList() {
                     </div>
                     <div className="p-4">
                       <h3 className="font-medium text-gray-900 truncate mb-1">{video.title}</h3>
-                      {video.caption && (
-                        <p className="text-sm text-gray-500 line-clamp-2 mb-2">{video.caption}</p>
+                      {video.description && (
+                        <p className="text-sm text-gray-500 line-clamp-2 mb-2">{video.description}</p>
                       )}
                       <div className="flex items-center justify-between text-xs text-gray-400">
-                        <span>{formatFileSize(video.size)}</span>
+                        <span>{formatFileSize(video.file_size)}</span>
                         <span>{new Date(video.created_at).toLocaleDateString('vi-VN')}</span>
                       </div>
                       <div className="flex items-center gap-2 mt-3 pt-3 border-t">
-                        <Link
-                          to={`/admin/media/videos/${video.id}/edit`}
-                          className="flex-1 text-center px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded transition-colors"
-                        >
-                          <Edit className="w-4 h-4 inline mr-1" />
-                          Sửa
-                        </Link>
-                        <button
-                          onClick={() => handleDelete(video.id)}
-                          className="flex-1 text-center px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 inline mr-1" />
-                          Xóa
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            {isLoading ? (
-              <div className="p-8 text-center">
-                <LoadingSpinner />
-              </div>
-            ) : error ? (
-              <div className="p-8 text-center text-red-600">
-                Không thể tải dữ liệu. Vui lòng thử lại.
-              </div>
-            ) : albums.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                <ImageIcon className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                <p className="mb-2">Chưa có album nào</p>
-                <p className="text-sm">Tạo album đầu tiên của bạn</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-                {albums.map((album) => (
-                  <div key={album.id} className="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                    <Link to={`/admin/media/albums/${album.id}`}>
-                      <div className="relative aspect-video bg-gray-200">
-                        {album.cover_url ? (
-                          <img
-                            src={album.cover_url}
-                            alt={album.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ImageIcon className="w-16 h-16 text-gray-400" />
-                          </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-                          <p className="text-white text-sm font-medium">
-                            {album.photo_count} ảnh
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                    <div className="p-4">
-                      <h3 className="font-medium text-gray-900 truncate mb-1">{album.title}</h3>
-                      {album.description && (
-                        <p className="text-sm text-gray-500 line-clamp-2 mb-2">{album.description}</p>
-                      )}
-                      <div className="text-xs text-gray-400 mb-3">
-                        {new Date(album.created_at).toLocaleDateString('vi-VN')}
-                      </div>
-                      <div className="flex items-center gap-2 pt-3 border-t">
-                        <Link
-                          to={`/admin/media/albums/${album.id}`}
+                        <a
+                          href={`http://localhost:8080${video.url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="flex-1 text-center px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
                         >
                           <Eye className="w-4 h-4 inline mr-1" />
                           Xem
-                        </Link>
-                        <Link
-                          to={`/admin/media/albums/${album.id}/edit`}
-                          className="flex-1 text-center px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded transition-colors"
-                        >
-                          <Edit className="w-4 h-4 inline mr-1" />
-                          Sửa
-                        </Link>
+                        </a>
                         <button
-                          onClick={() => handleDelete(album.id)}
-                          className="flex-1 text-center px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
+                          onClick={() => handleDelete(video.id)}
+                          disabled={deleteMutation.isPending}
+                          className="flex-1 text-center px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                         >
                           <Trash2 className="w-4 h-4 inline mr-1" />
                           Xóa
@@ -306,7 +230,102 @@ export default function MediaList() {
                   </div>
                 ))}
               </div>
-            )}
+            )
+          ) : (
+            // Images Tab
+            mediaItems.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                <ImageIcon className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p className="mb-2">Chưa có ảnh nào</p>
+                <p className="text-sm">Upload ảnh đầu tiên của bạn</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-6">
+                {mediaItems.map((image) => (
+                  <div key={image.id} className="group relative aspect-square bg-gray-100 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                    <img
+                      src={`http://localhost:8080${image.url}`}
+                      alt={image.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                        <a
+                          href={`http://localhost:8080${image.url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 bg-white rounded-full hover:bg-gray-100"
+                          title="Xem"
+                        >
+                          <Eye className="w-4 h-4 text-gray-700" />
+                        </a>
+                        <button
+                          onClick={() => handleDelete(image.id)}
+                          disabled={deleteMutation.isPending}
+                          className="p-2 bg-white rounded-full hover:bg-gray-100 disabled:opacity-50"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p className="text-white text-xs font-medium truncate">{image.title}</p>
+                      <p className="text-white text-xs">{formatFileSize(image.file_size)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+
+        {/* Pagination */}
+        {pagination && pagination.total_pages > 1 && (
+          <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 rounded-b-lg">
+            <div className="flex-1 flex justify-between sm:hidden">
+              <button
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+                className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                Trước
+              </button>
+              <button
+                onClick={() => setPage(Math.min(pagination.total_pages, page + 1))}
+                disabled={page === pagination.total_pages}
+                className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                Sau
+              </button>
+            </div>
+            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  Hiển thị <span className="font-medium">{(page - 1) * 24 + 1}</span> đến{' '}
+                  <span className="font-medium">{Math.min(page * 24, pagination.total)}</span> trong{' '}
+                  <span className="font-medium">{pagination.total}</span> {activeTab === 'images' ? 'ảnh' : 'video'}
+                </p>
+              </div>
+              <div>
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                  <button
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page === 1}
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Trước
+                  </button>
+                  <button
+                    onClick={() => setPage(Math.min(pagination.total_pages, page + 1))}
+                    disabled={page === pagination.total_pages}
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Sau
+                  </button>
+                </nav>
+              </div>
+            </div>
           </div>
         )}
       </div>

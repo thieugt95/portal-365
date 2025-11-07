@@ -1,20 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../lib/apiClient';
 import { dummyArticles } from '@/data/dummyData';
+import { NEWS_SLUGS, CATEGORY_NAMES } from '../config/categorySlugs';
 
-// Home page category sections configuration
-export const HOME_CATEGORY_SLUGS = [
-  'tin-quoc-te',
-  'tin-trong-nuoc', 
-  'tin-quan-su',
-  'tin-don-vi'
-];
+// Home page category sections configuration (re-export from central config)
+export const HOME_CATEGORY_SLUGS = NEWS_SLUGS;
 
 export const HOME_CATEGORY_NAMES: Record<string, string> = {
-  'tin-quoc-te': 'Tin quốc tế',
-  'tin-trong-nuoc': 'Tin trong nước',
-  'tin-quan-su': 'Tin quân sự',
-  'tin-don-vi': 'Tin đơn vị'
+  [NEWS_SLUGS[0]]: CATEGORY_NAMES[NEWS_SLUGS[0]],
+  [NEWS_SLUGS[1]]: CATEGORY_NAMES[NEWS_SLUGS[1]],
+  [NEWS_SLUGS[2]]: CATEGORY_NAMES[NEWS_SLUGS[2]],
+  [NEWS_SLUGS[3]]: CATEGORY_NAMES[NEWS_SLUGS[3]],
 };
 
 export interface Article {
@@ -62,13 +58,8 @@ function getDummyHomeData(): HomeData {
       const catName = a.category?.name;
       if (!catName) return false;
       
-      // Map category names to slugs
-      if (slug === 'tin-quoc-te') return catName === 'Tin quốc tế';
-      if (slug === 'tin-trong-nuoc') return catName === 'Tin trong nước';
-      if (slug === 'tin-quan-su') return catName === 'Tin quân sự';
-      if (slug === 'tin-don-vi') return catName === 'Tin đơn vị';
-      
-      return false;
+      // Map category names to expected display names
+      return catName === categoryName;
     });
 
     return {

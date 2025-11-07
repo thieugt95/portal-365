@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Admin Upload</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .success { color: green; }
+        .error { color: red; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Test Admin API</h1>
+    
+    <div class="section">
+        <h2>1. Login</h2>
+        <button onclick="testLogin()">Test Login</button>
+        <div id="login-result"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. Get Documents</h2>
+        <button onclick="testGetDocuments()">Get Documents</button>
+        <div id="docs-result"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Get Media</h2>
+        <button onclick="testGetMedia('image')">Get Images</button>
+        <button onclick="testGetMedia('video')">Get Videos</button>
+        <div id="media-result"></div>
+    </div>
+
+    <div class="section">
+        <h2>4. Upload Document</h2>
+        <input type="file" id="doc-file" accept=".pdf,.doc,.docx">
+        <button onclick="testUploadDocument()">Upload</button>
+        <div id="upload-doc-result"></div>
+    </div>
+
+    <div class="section">
+        <h2>5. Upload Media</h2>
+        <input type="file" id="media-file" accept="image/*,video/*">
+        <button onclick="testUploadMedia()">Upload</button>
+        <div id="upload-media-result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api/v1';
+        let token = localStorage.getItem('accessToken');
+
+        async function testLogin() {
+            const resultDiv = document.getElementById('login-result');
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@portal365.com',
+                        password: 'admin123'
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.data && data.data.access_token) {
+                    token = data.data.access_token;
+                    localStorage.setItem('accessToken', token);
+                    resultDiv.innerHTML = `<div class="success">✓ Login successful<br>Token: ${token.substring(0, 50)}...</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ Login failed<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testGetDocuments() {
+            const resultDiv = document.getElementById('docs-result');
+            if (!token) {
+                resultDiv.innerHTML = '<div class="error">Please login first</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/documents`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.data) {
+                    resultDiv.innerHTML = `<div class="success">✓ Got ${data.data.length} documents</div><pre>${JSON.stringify(data.data.slice(0, 2), null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ No data<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testGetMedia(type) {
+            const resultDiv = document.getElementById('media-result');
+            if (!token) {
+                resultDiv.innerHTML = '<div class="error">Please login first</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/media?media_type=${type}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.data) {
+                    resultDiv.innerHTML = `<div class="success">✓ Got ${data.data.length} ${type}s</div><pre>${JSON.stringify(data.data.slice(0, 2), null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ No data<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testUploadDocument() {
+            const resultDiv = document.getElementById('upload-doc-result');
+            const fileInput = document.getElementById('doc-file');
+            
+            if (!token) {
+                resultDiv.innerHTML = '<div class="error">Please login first</div>';
+                return;
+            }
+
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = '<div class="error">Please select a file</div>';
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('title', 'Test Document ' + Date.now());
+                formData.append('category_id', '11');
+                formData.append('description', 'Test upload from browser');
+
+                const response = await fetch(`${API_BASE}/admin/documents/upload`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<div class="success">✓ Upload successful<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ Upload failed (${response.status})<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testUploadMedia() {
+            const resultDiv = document.getElementById('upload-media-result');
+            const fileInput = document.getElementById('media-file');
+            
+            if (!token) {
+                resultDiv.innerHTML = '<div class="error">Please login first</div>';
+                return;
+            }
+
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = '<div class="error">Please select a file</div>';
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('title', 'Test Media ' + Date.now());
+                formData.append('category_id', '18'); // Thư viện ảnh
+                formData.append('description', 'Test upload from browser');
+
+                const response = await fetch(`${API_BASE}/admin/media/upload`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<div class="success">✓ Upload successful<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ Upload failed (${response.status})<pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-load token on page load
+        window.onload = () => {
+            if (token) {
+                document.getElementById('login-result').innerHTML = `<div class="success">Token loaded from localStorage</div>`;
+            }
+        };
+    </script>
+</body>
+</html>
